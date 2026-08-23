@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+*.local
+
+# Go
+backend/server
+backend/uploads/*
+
+# Env
+.env
+
+# Databases / backups
+*.sqlite
+*.sqlite3
+backups/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 旧项目源码包（仅作参考素材，不纳入版本库）
+光研集论坛-公开源码包-2026-07-28/

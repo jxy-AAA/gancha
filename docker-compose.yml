@@ -1,0 +1,20 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: guangyanji-mysql
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: guangyanji_root
+      MYSQL_DATABASE: guangyanji
+      MYSQL_USER: guangyanji
+      MYSQL_PASSWORD: guangyanji_dev
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - guangyanji_mysql_data:/var/lib/mysql
+
+volumes:
+  guangyanji_mysql_data:
