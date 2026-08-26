@@ -1,0 +1,16 @@
+.git
+.gitignore
+.claude
+光研集论坛-公开源码包-2026-07-28
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# Go
+backend/uploads
+backend/server
+
+# 环境与密钥
+backend/.env
+*.env
