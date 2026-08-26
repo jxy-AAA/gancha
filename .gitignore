@@ -21,5 +21,8 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Claude Code 本地会话与配置
+.claude/
+
 # 旧项目源码包（仅作参考素材，不纳入版本库）
 光研集论坛-公开源码包-2026-07-28/

@@ -13,6 +13,7 @@ type Config struct {
 	DBDSN          string
 	JWTSecret      string
 	UploadDir      string
+	FrontendDist   string
 	RegisterEnable bool
 }
 
@@ -23,6 +24,7 @@ func Load() (*Config, error) {
 		Port:           getenv("PORT", "8080"),
 		JWTSecret:      getenv("JWT_SECRET", ""),
 		UploadDir:      getenv("UPLOAD_DIR", "uploads"),
+		FrontendDist:   getenv("FRONTEND_DIST", ""),
 		RegisterEnable: getenv("REGISTER_ENABLED", "true") != "false",
 	}
 	if cfg.JWTSecret == "" {

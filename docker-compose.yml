@@ -16,5 +16,27 @@ services:
     volumes:
       - guangyanji_mysql_data:/var/lib/mysql
 
+  app:
+    build: .
+    container_name: guangyanji-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8082"
+    environment:
+      PORT: "8082"
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: guangyanji
+      DB_PASSWORD: guangyanji_dev
+      DB_NAME: guangyanji
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      UPLOAD_DIR: /app/uploads
+      REGISTER_ENABLED: ${REGISTER_ENABLED:-true}
+    volumes:
+      - guangyanji_uploads:/app/uploads
+    depends_on:
+      - mysql
+
 volumes:
   guangyanji_mysql_data:
+  guangyanji_uploads:

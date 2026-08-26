@@ -4,6 +4,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	"guangyanji/internal/config"
@@ -126,6 +127,18 @@ func main() {
 
 	// 公开附件静态托管
 	r.StaticFS("/uploads", http.Dir(cfg.UploadDir))
+
+	// 前端静态托管：设置了 FRONTEND_DIST 时，由后端同时提供页面与 API（单端口部署）
+	if info, err := os.Stat(cfg.FrontendDist); err == nil && info.IsDir() {
+		r.StaticFS("/", http.Dir(cfg.FrontendDist))
+		r.NoRoute(func(c *gin.Context) {
+			if c.Request.Method == http.MethodGet {
+				c.File(filepath.Join(cfg.FrontendDist, "index.html"))
+				return
+			}
+			c.Status(http.StatusNotFound)
+		})
+	}
 
 	log.Printf("光研集后端启动于 :%s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
