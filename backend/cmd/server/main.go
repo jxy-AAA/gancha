@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"guangyanji/internal/config"
@@ -130,13 +131,21 @@ func main() {
 
 	// 前端静态托管：设置了 FRONTEND_DIST 时，由后端同时提供页面与 API（单端口部署）
 	if info, err := os.Stat(cfg.FrontendDist); err == nil && info.IsDir() {
-		r.StaticFS("/", http.Dir(cfg.FrontendDist))
 		r.NoRoute(func(c *gin.Context) {
-			if c.Request.Method == http.MethodGet {
-				c.File(filepath.Join(cfg.FrontendDist, "index.html"))
+			if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+				c.Status(http.StatusNotFound)
 				return
 			}
-			c.Status(http.StatusNotFound)
+			if strings.HasPrefix(c.Request.URL.Path, "/api/") {
+				c.JSON(http.StatusNotFound, gin.H{"error": "接口不存在"})
+				return
+			}
+			p := filepath.Join(cfg.FrontendDist, filepath.Clean(c.Request.URL.Path))
+			if f, err := os.Stat(p); err == nil && !f.IsDir() {
+				c.File(p)
+				return
+			}
+			c.File(filepath.Join(cfg.FrontendDist, "index.html"))
 		})
 	}
 
