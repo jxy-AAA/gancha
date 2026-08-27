@@ -67,6 +67,26 @@ func Open(dsn string) (*sql.DB, error) {
 			}
 		}
 	}
+	// 旧版就业表字段（position/status/url/note）已废弃：NOT NULL 无默认值会阻塞新插入，幂等删除
+	for _, col := range []string{"position", "status", "url", "note"} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME=?`, col).Scan(&n)
+		if n > 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entries DROP COLUMN ` + col); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// 旧版 city 为 VARCHAR(50)，新结构上限 100 字，幂等加宽
+	var cityLen int
+	_ = conn.QueryRow(`SELECT CHARACTER_MAXIMUM_LENGTH FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME='city'`).Scan(&cityLen)
+	if cityLen > 0 && cityLen < 100 {
+		if _, err := conn.Exec(`ALTER TABLE job_entries MODIFY COLUMN city VARCHAR(100) NOT NULL DEFAULT ''`); err != nil {
+			return nil, err
+		}
+	}
 	for _, stmt := range Seed {
 		if _, err := conn.Exec(stmt); err != nil {
 			return nil, err
