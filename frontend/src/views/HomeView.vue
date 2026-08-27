@@ -75,8 +75,8 @@ onMounted(async () => {
         <router-link class="text-link" to="/ask">全部投稿 ↗</router-link>
       </div>
       <div class="feed">
-        <div v-for="q in latestQuestions" :key="q.id" class="card">
-          <h3><router-link :to="`/ask/${q.id}`">{{ q.title }}</router-link></h3>
+        <div v-for="q in latestQuestions" :key="q.id" class="card clickable-card" @click="router.push(`/ask/${q.id}`)">
+          <h3>{{ q.title }}</h3>
           <div class="meta">
             <span class="badge">{{ q.category_name }}</span>
             <span>回答 {{ q.answer_count }}</span>
@@ -93,8 +93,9 @@ onMounted(async () => {
         <router-link class="text-link" to="/knowledge">全部文章 ↗</router-link>
       </div>
       <div class="feed">
-        <div v-for="a in latestArticles" :key="a.id" class="card">
-          <h3><router-link :to="`/knowledge/${a.id}`">{{ a.title }}</router-link></h3>
+        <div v-for="a in latestArticles" :key="a.id" class="card clickable-card"
+          @click="router.push(`/knowledge/${a.id}`)">
+          <h3>{{ a.title }}</h3>
           <p class="excerpt">{{ a.summary || a.body.slice(0, 120) }}</p>
           <div class="meta">
             <span class="badge badge-teal">知识文章</span>
@@ -112,8 +113,8 @@ onMounted(async () => {
         <router-link class="text-link" to="/forum">全部帖子 ↗</router-link>
       </div>
       <div class="feed">
-        <div v-for="p in latestPosts" :key="p.id" class="card">
-          <h3><router-link :to="`/forum/${p.id}`">{{ p.title }}</router-link></h3>
+        <div v-for="p in latestPosts" :key="p.id" class="card clickable-card" @click="router.push(`/forum/${p.id}`)">
+          <h3>{{ p.title }}</h3>
           <div class="meta">
             <span class="badge badge-teal">{{ p.board_name }}</span>
             <span>回复 {{ p.reply_count }}</span>

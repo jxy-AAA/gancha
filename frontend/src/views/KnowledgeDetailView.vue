@@ -43,6 +43,7 @@ async function loadMine() {
 
 async function toggleVote() {
   if (!auth.isLoggedIn) return router.push('/login?redirect=' + route.fullPath)
+  error.value = ''
   try {
     const { data } = await api.toggleVote({ target_type: 'article', target_id: id.value })
     myVote.value = data.voted
@@ -113,7 +114,7 @@ onMounted(() => {
         <button class="vote-btn" :class="{ active: myVote }" @click="toggleVote">
           ▲ 赞 {{ article.score }}
         </button>
-        <span style="color: var(--muted); font-size: 12px">💬 {{ article.comment_count ?? comments.length }} 条评论</span>
+        <span style="color: var(--muted); font-size: 12px">{{ article.comment_count ?? comments.length }} 条评论</span>
         <router-link v-if="auth.isLoggedIn && (auth.user?.id === article.user_id || auth.isAdmin)" class="text-link"
           :to="`/knowledge/${article.id}/edit`" style="margin-left: auto">编辑</router-link>
         <button v-if="auth.isLoggedIn && (auth.user?.id === article.user_id || auth.isAdmin)" class="ghost-danger"
@@ -121,7 +122,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="detail-card">
+    <div id="comments" class="detail-card">
       <h2 style="font-size: 18px">评论 {{ comments.length }}</h2>
       <p v-if="error" class="form-hint" style="margin-bottom: 8px">{{ error }}</p>
       <div v-for="c in comments" :key="c.id" class="answer-item" style="padding: 10px 0">

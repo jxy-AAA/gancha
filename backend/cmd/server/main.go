@@ -98,7 +98,7 @@ func main() {
 		api.GET("/boards", h.ListBoards)
 		api.GET("/forum/posts", h.ListForumPosts)
 		api.POST("/forum/posts", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(10, time.Minute), h.CreateForumPost)
-		api.GET("/forum/posts/:id", h.GetForumPost)
+		api.GET("/forum/posts/:id", middleware.OptionalAuth(conn, cfg.JWTSecret), h.GetForumPost)
 		api.PUT("/forum/posts/:id", middleware.Auth(conn, cfg.JWTSecret), h.UpdateForumPost)
 		api.DELETE("/forum/posts/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteForumPost)
 		api.POST("/forum/posts/:id/view", h.RegisterForumPostView)

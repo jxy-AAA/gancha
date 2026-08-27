@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS forum_posts (
   title VARCHAR(160) NOT NULL,
   body TEXT NOT NULL,
   views INT UNSIGNED NOT NULL DEFAULT 0,
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   edited_at DATETIME NULL,
   KEY idx_forum_posts_created (created_at),

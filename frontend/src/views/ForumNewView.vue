@@ -11,6 +11,7 @@ const boards = ref([])
 const boardId = ref(0)
 const title = ref('')
 const body = ref('')
+const isAnonymous = ref(false)
 const error = ref('')
 const submitting = ref(false)
 
@@ -36,6 +37,7 @@ async function submit() {
       board_id: boardId.value,
       title: title.value.trim(),
       body: body.value,
+      is_anonymous: isAnonymous.value,
     })
     router.push(`/forum/${data.id}`)
   } catch (e) {
@@ -59,6 +61,10 @@ async function submit() {
       <input v-model="title" type="text" maxlength="160" placeholder="帖子的标题" />
       <label>内容</label>
       <Editor v-model="body" :rows="10" placeholder="自由讨论：行业动态、学术问题、资源交流…" />
+      <label class="anon-option">
+        <input v-model="isAnonymous" type="checkbox" />
+        匿名发布（作者显示为「匿名」）
+      </label>
       <p class="form-hint">{{ error }}</p>
       <div class="form-footer">
         <button class="ghost-btn" @click="router.back()">取消</button>

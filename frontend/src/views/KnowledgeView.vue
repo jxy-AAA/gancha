@@ -16,6 +16,7 @@ const search = ref('')
 const loading = ref(false)
 const votedMap = ref({})
 const busyId = ref(0)
+const error = ref('')
 
 async function load() {
   loading.value = true
@@ -43,13 +44,20 @@ async function toggleVote(a) {
   if (!auth.isLoggedIn) return router.push('/login?redirect=/knowledge')
   if (busyId.value) return
   busyId.value = a.id
+  error.value = ''
   try {
     const { data } = await api.toggleVote({ target_type: 'article', target_id: a.id })
     votedMap.value[a.id] = data.voted
     a.score += data.voted ? 1 : -1
+  } catch (e) {
+    error.value = e.message
   } finally {
     busyId.value = 0
   }
+}
+
+function goComments(a) {
+  router.push(`/knowledge/${a.id}#comments`)
 }
 onMounted(load)
 </script>
@@ -83,13 +91,15 @@ onMounted(load)
             @click="toggleVote(a)">
             ▲ {{ a.score ?? 0 }}
           </button>
-          <span>💬 {{ a.comment_count ?? 0 }}</span>
+          <button class="stat-btn" @click="goComments(a)">评论 {{ a.comment_count ?? 0 }}</button>
+          <span class="stat-btn">浏览 {{ a.views }}</span>
           <span style="margin-left: auto">
             <img v-if="a.author_avatar" :src="a.author_avatar" class="avatar" alt="" />
-            {{ a.author }} · 浏览 {{ a.views }} · {{ timeAgo(a.created_at) }}
+            {{ a.author }} · {{ timeAgo(a.created_at) }}
           </span>
         </div>
       </div>
+      <p v-if="error" class="form-hint">{{ error }}</p>
     </div>
     <Pagination :page="page" :total="total" :page-size="pageSize" @change="onPage" />
   </div>

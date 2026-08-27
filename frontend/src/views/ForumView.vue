@@ -68,11 +68,11 @@ onMounted(async () => {
     </div>
 
     <div class="feed" style="margin-bottom: 22px">
-      <div class="card job-portal" @click="router.push('/jobs')">
+      <div class="card clickable-card" @click="router.push('/jobs')">
         <h3 style="font-size: 15px">
-          就业信息 · 秋招共享表
+          就业信息
           <span style="color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 10px">公司 / 岗位 / 投递进度共享表格，人人可编辑</span>
-          <span style="margin-left: auto; color: var(--primary); font-weight: 600; font-size: 12px">进入表格 →</span>
+          <span style="margin-left: auto; color: var(--muted); font-weight: 600; font-size: 12px">进入表格 →</span>
         </h3>
       </div>
       <div v-for="b in boards" :key="b.id" class="card" style="cursor: pointer" @click="onBoard(b.id === boardId ? 0 : b.id)">
@@ -87,8 +87,8 @@ onMounted(async () => {
     <div v-if="loading" class="empty-note">加载中…</div>
     <div v-else-if="!items.length" class="empty-note">这个板块还没有帖子，来发第一帖吧</div>
     <div v-else class="feed">
-      <div v-for="p in items" :key="p.id" class="card">
-        <h3><router-link :to="`/forum/${p.id}`">{{ p.title }}</router-link></h3>
+      <div v-for="p in items" :key="p.id" class="card clickable-card" @click="router.push(`/forum/${p.id}`)">
+        <h3>{{ p.title }}</h3>
         <div class="meta">
           <span class="badge badge-teal">{{ p.board_name }}</span>
           <span>回复 {{ p.reply_count }}</span>

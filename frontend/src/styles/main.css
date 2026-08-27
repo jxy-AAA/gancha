@@ -289,14 +289,6 @@ button.text-link {
   line-height: 1.5;
   margin: 0 0 6px;
 }
-.job-portal {
-  border: 1px solid var(--blue);
-  background: linear-gradient(90deg, var(--blue-soft), #fff);
-  cursor: pointer;
-}
-.job-portal:hover {
-  box-shadow: 0 4px 14px #2d6cdf22;
-}
 .card h3 a:hover {
   color: var(--teal);
 }
@@ -557,6 +549,19 @@ button.text-link {
   font-size: 13px;
   margin-top: 12px;
   min-height: 18px;
+}
+.form-card label.anon-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+  margin: 14px 0 0;
+  cursor: pointer;
+}
+.anon-option input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
 }
 .form-footer {
   display: flex;

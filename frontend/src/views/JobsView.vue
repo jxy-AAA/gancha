@@ -132,7 +132,7 @@ onMounted(load)
     <div class="section-heading">
       <div>
         <p class="eyebrow">JOBS</p>
-        <h2>就业信息 · 秋招共享表</h2>
+        <h2>就业信息</h2>
       </div>
       <div class="list-tools">
         <button class="primary-btn" @click="startCreate">+ 新增一行</button>

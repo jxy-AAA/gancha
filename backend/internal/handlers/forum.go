@@ -67,7 +67,8 @@ func (s *Server) ListForumPosts(c *gin.Context) {
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM forum_posts p WHERE `+whereSQL, args...).Scan(&total)
 	rows, err := s.DB.Query(`SELECT p.id, p.board_id, b.name, p.title, p.body, p.views, p.created_at, p.edited_at,
-			u.username, u.avatar,
+			CASE WHEN p.is_anonymous=1 THEN '匿名' ELSE u.username END,
+			CASE WHEN p.is_anonymous=1 THEN '' ELSE u.avatar END,
 			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id) AS reply_count
 		FROM forum_posts p
 		JOIN users u ON u.id=p.user_id
@@ -81,16 +82,16 @@ func (s *Server) ListForumPosts(c *gin.Context) {
 	items := make([]gin.H, 0, size)
 	for rows.Next() {
 		var (
-			id, bid   int64
-			bName     sql.NullString
-			title     string
-			body      string
-			views     int
-			created   time.Time
-			edited    sql.NullTime
-			author    string
-			avatar    string
-			replyCnt  int
+			id, bid  int64
+			bName    sql.NullString
+			title    string
+			body     string
+			views    int
+			created  time.Time
+			edited   sql.NullTime
+			author   string
+			avatar   string
+			replyCnt int
 		)
 		if rows.Scan(&id, &bid, &bName, &title, &body, &views, &created, &edited,
 			&author, &avatar, &replyCnt) == nil {
@@ -111,28 +112,36 @@ func (s *Server) GetForumPost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
 		return
 	}
+	viewerID := int64(0)
+	isAdmin := false
+	if u, ok := middleware.CurrentUser(c); ok {
+		viewerID = u.ID
+		isAdmin = u.Role == "admin"
+	}
 	var (
-		bid       int64
-		bName     sql.NullString
-		title     string
-		body      string
-		views     int
-		author    string
-		avatar    string
-		created   time.Time
-		edited    sql.NullTime
-		replyCnt  int
-		score     int
+		bid          int64
+		bName        sql.NullString
+		title        string
+		body         string
+		views        int
+		author       string
+		avatar       string
+		created      time.Time
+		edited       sql.NullTime
+		replyCnt     int
+		score        int
+		userID       int64
+		isAnonymous  bool
 	)
 	err = s.DB.QueryRow(`SELECT p.board_id, b.name, p.title, p.body, p.views, u.username, u.avatar,
-			p.created_at, p.edited_at,
+			p.created_at, p.edited_at, p.user_id, p.is_anonymous,
 			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id),
 			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_post' AND v.target_id=p.id)
 		FROM forum_posts p
 		JOIN users u ON u.id=p.user_id
 		LEFT JOIN forum_boards b ON b.id=p.board_id
 		WHERE p.id=?`, id).
-		Scan(&bid, &bName, &title, &body, &views, &author, &avatar, &created, &edited, &replyCnt, &score)
+		Scan(&bid, &bName, &title, &body, &views, &author, &avatar, &created, &edited, &userID, &isAnonymous, &replyCnt, &score)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
 		return
@@ -141,11 +150,19 @@ func (s *Server) GetForumPost(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
+	if isAnonymous {
+		author = "匿名"
+		avatar = ""
+		if viewerID != userID && !isAdmin {
+			userID = 0
+		}
+	}
 	replies, _ := s.listReplies(id)
 	c.JSON(http.StatusOK, gin.H{
 		"id": id, "board_id": bid, "board_name": bName.String, "title": title, "body": body,
-		"views": views, "author": author, "author_avatar": avatar, "created_at": created,
-		"edited_at": edited.Time, "reply_count": replyCnt, "score": score, "replies": replies,
+		"views": views, "author": author, "author_avatar": avatar, "user_id": userID,
+		"created_at": created, "edited_at": edited.Time, "reply_count": replyCnt, "score": score,
+		"replies": replies,
 	})
 }
 
@@ -177,9 +194,10 @@ func (s *Server) listReplies(postID int64) ([]gin.H, error) {
 }
 
 type forumPostReq struct {
-	BoardID int64  `json:"board_id"`
-	Title   string `json:"title"`
-	Body    string `json:"body"`
+	BoardID     int64  `json:"board_id"`
+	Title       string `json:"title"`
+	Body        string `json:"body"`
+	IsAnonymous bool   `json:"is_anonymous"`
 }
 
 // CreateForumPost 发帖。
@@ -206,8 +224,8 @@ func (s *Server) CreateForumPost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "板块不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body) VALUES (?, ?, ?, ?)`,
-		req.BoardID, u.ID, req.Title, req.Body)
+	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body, is_anonymous) VALUES (?, ?, ?, ?, ?)`,
+		req.BoardID, u.ID, req.Title, req.Body, req.IsAnonymous)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return

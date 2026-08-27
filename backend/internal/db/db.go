@@ -39,6 +39,15 @@ func Open(dsn string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	// 现有环境的 forum_posts.is_anonymous 列升级（幂等）
+	var hasAnon int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='forum_posts' AND COLUMN_NAME='is_anonymous'`).Scan(&hasAnon)
+	if hasAnon == 0 {
+		if _, err := conn.Exec(`ALTER TABLE forum_posts ADD COLUMN is_anonymous TINYINT(1) NOT NULL DEFAULT 0`); err != nil {
+			return nil, err
+		}
+	}
 	for _, stmt := range Seed {
 		if _, err := conn.Exec(stmt); err != nil {
 			return nil, err
