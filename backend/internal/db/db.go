@@ -48,10 +48,32 @@ func Open(dsn string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	// 现有环境的 job_entries 升级为“2027届公司招聘信息”共享表格列（幂等：逐列检查后 ALTER）
+	for name, ddl := range map[string]string{
+		"industry":      "VARCHAR(200) NOT NULL DEFAULT ''",
+		"positions_27":  "VARCHAR(500) NOT NULL DEFAULT ''",
+		"confirm_level": "VARCHAR(300) NOT NULL DEFAULT ''",
+		"strength":      "VARCHAR(10) NOT NULL DEFAULT ''",
+		"current_status": "VARCHAR(200) NOT NULL DEFAULT ''",
+		"links":         "VARCHAR(1000) NOT NULL DEFAULT ''",
+		"verified_at":   "VARCHAR(10) NOT NULL DEFAULT ''",
+	} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME=?`, name).Scan(&n)
+		if n == 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entries ADD COLUMN ` + name + ` ` + ddl); err != nil {
+				return nil, err
+			}
+		}
+	}
 	for _, stmt := range Seed {
 		if _, err := conn.Exec(stmt); err != nil {
 			return nil, err
 		}
+	}
+	if err := seedJobEntries(conn); err != nil {
+		return nil, err
 	}
 	return conn, nil
 }

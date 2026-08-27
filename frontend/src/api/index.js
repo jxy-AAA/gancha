@@ -70,11 +70,14 @@ export default {
   updateForumReply: (id, d) => api.put(`/forum/replies/${id}`, d),
   deleteForumReply: (id) => api.delete(`/forum/replies/${id}`),
 
-  // 就业共享表格
+  // 就业共享表格（2027 届公司招聘信息）
   jobs: () => api.get('/jobs'),
   createJob: (d) => api.post('/jobs', d),
   updateJob: (id, d) => api.put(`/jobs/${id}`, d),
   deleteJob: (id) => api.delete(`/jobs/${id}`),
+  jobReviews: (id) => api.get(`/jobs/${id}/reviews`),
+  createJobReview: (id, d) => api.post(`/jobs/${id}/reviews`, d),
+  deleteJobReview: (id) => api.delete(`/jobs/reviews/${id}`),
 
   // 通知
   notifications: () => api.get('/notifications'),

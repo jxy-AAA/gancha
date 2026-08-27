@@ -152,14 +152,27 @@ CREATE TABLE IF NOT EXISTS job_entries (
   user_id BIGINT UNSIGNED NOT NULL,
   last_editor_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
   company VARCHAR(100) NOT NULL,
-  position VARCHAR(100) NOT NULL,
-  city VARCHAR(50) NOT NULL DEFAULT '',
-  status ENUM('pending','applied','test','interview','offer','rejected') NOT NULL DEFAULT 'pending',
-  url VARCHAR(500) NOT NULL DEFAULT '',
-  note VARCHAR(500) NOT NULL DEFAULT '',
+  industry VARCHAR(200) NOT NULL DEFAULT '',
+  positions_27 VARCHAR(500) NOT NULL DEFAULT '',
+  confirm_level VARCHAR(300) NOT NULL DEFAULT '',
+  strength VARCHAR(10) NOT NULL DEFAULT '',
+  city VARCHAR(100) NOT NULL DEFAULT '',
+  current_status VARCHAR(200) NOT NULL DEFAULT '',
+  links VARCHAR(1000) NOT NULL DEFAULT '',
+  verified_at VARCHAR(10) NOT NULL DEFAULT '',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_job_entries_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS job_reviews (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  job_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  body VARCHAR(500) NOT NULL,
+  is_anonymous TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_job_reviews_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS article_comments (

@@ -13,23 +13,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-var jobStatuses = map[string]bool{
-	"pending":   true,
-	"applied":   true,
-	"test":      true,
-	"interview": true,
-	"offer":     true,
-	"rejected":  true,
-}
-
-// ListJobs 就业共享表格：全量返回，按更新时间倒序。
+// ListJobs 就业共享表格（2027 届公司招聘信息）：全量返回，按更新时间倒序。
 func (s *Server) ListJobs(c *gin.Context) {
-	rows, err := s.DB.Query(`SELECT j.id, j.user_id, j.company, j.position, j.city, j.status,
-			j.url, j.note, j.created_at, j.updated_at, u.username, COALESCE(le.username, u.username)
+	rows, err := s.DB.Query(`SELECT j.id, j.user_id, j.company, j.industry, j.positions_27,
+			j.confirm_level, j.strength, j.city, j.current_status, j.links, j.verified_at,
+			j.created_at, j.updated_at,
+			COALESCE(u.username, '官方'), COALESCE(le.username, u.username, '官方'),
+			(SELECT COUNT(*) FROM job_reviews r WHERE r.job_id = j.id)
 		FROM job_entries j
-		JOIN users u ON u.id=j.user_id
+		LEFT JOIN users u ON u.id=j.user_id
 		LEFT JOIN users le ON le.id=j.last_editor_id
-		ORDER BY j.updated_at DESC, j.id DESC`)
+		ORDER BY j.updated_at DESC, j.id ASC`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -40,21 +34,29 @@ func (s *Server) ListJobs(c *gin.Context) {
 		var (
 			id, uid   int64
 			company   string
-			position  string
+			industry  string
+			positions string
+			confirm   string
+			strength  string
 			city      string
-			status    string
-			url, note string
+			curStatus string
+			links     string
+			verified  string
 			created   time.Time
 			updated   time.Time
 			author    string
 			updater   string
+			reviewCnt int
 		)
-		if rows.Scan(&id, &uid, &company, &position, &city, &status,
-			&url, &note, &created, &updated, &author, &updater) == nil {
+		if rows.Scan(&id, &uid, &company, &industry, &positions,
+			&confirm, &strength, &city, &curStatus, &links, &verified,
+			&created, &updated, &author, &updater, &reviewCnt) == nil {
 			items = append(items, gin.H{
-				"id": id, "user_id": uid, "company": company, "position": position,
-				"city": city, "status": status, "url": url, "note": note,
-				"created_at": created, "updated_at": updated, "author": author, "updater": updater,
+				"id": id, "user_id": uid, "company": company, "industry": industry,
+				"positions_27": positions, "confirm_level": confirm, "strength": strength,
+				"city": city, "current_status": curStatus, "links": links,
+				"verified_at": verified, "created_at": created, "updated_at": updated,
+				"author": author, "updater": updater, "review_count": reviewCnt,
 			})
 		}
 	}
@@ -62,40 +64,53 @@ func (s *Server) ListJobs(c *gin.Context) {
 }
 
 type jobReq struct {
-	Company  string `json:"company"`
-	Position string `json:"position"`
-	City     string `json:"city"`
-	Status   string `json:"status"`
-	URL      string `json:"url"`
-	Note     string `json:"note"`
+	Company      string `json:"company"`
+	Industry     string `json:"industry"`
+	Positions27  string `json:"positions_27"`
+	ConfirmLevel string `json:"confirm_level"`
+	Strength     string `json:"strength"`
+	City         string `json:"city"`
+	CurrentStatus string `json:"current_status"`
+	Links        string `json:"links"`
+	VerifiedAt   string `json:"verified_at"`
 }
 
 func (r *jobReq) sanitize() string {
 	r.Company = strings.TrimSpace(r.Company)
-	r.Position = strings.TrimSpace(r.Position)
+	r.Industry = strings.TrimSpace(r.Industry)
+	r.Positions27 = strings.TrimSpace(r.Positions27)
+	r.ConfirmLevel = strings.TrimSpace(r.ConfirmLevel)
+	r.Strength = strings.TrimSpace(r.Strength)
 	r.City = strings.TrimSpace(r.City)
-	r.URL = strings.TrimSpace(r.URL)
-	r.Note = strings.TrimSpace(r.Note)
+	r.CurrentStatus = strings.TrimSpace(r.CurrentStatus)
+	r.Links = strings.TrimSpace(r.Links)
+	r.VerifiedAt = strings.TrimSpace(r.VerifiedAt)
 	if r.Company == "" || len([]rune(r.Company)) > 100 {
 		return "公司名称不能为空且不超过 100 字"
 	}
-	if r.Position == "" || len([]rune(r.Position)) > 100 {
-		return "岗位不能为空且不超过 100 字"
+	if len([]rune(r.Industry)) > 200 {
+		return "产业链/光学方向不超过 200 字"
 	}
-	if len([]rune(r.City)) > 50 {
-		return "城市不超过 50 字"
+	if len([]rune(r.Positions27)) > 500 {
+		return "27届岗位不超过 500 字"
 	}
-	if len([]rune(r.URL)) > 500 {
-		return "链接不超过 500 字"
+	if len([]rune(r.ConfirmLevel)) > 300 {
+		return "岗位确认度不超过 300 字"
 	}
-	if len([]rune(r.Note)) > 500 {
-		return "备注不超过 500 字"
+	if len([]rune(r.Strength)) > 10 {
+		return "证据强度不超过 10 字"
 	}
-	if r.Status == "" {
-		r.Status = "pending"
+	if len([]rune(r.City)) > 100 {
+		return "地点不超过 100 字"
 	}
-	if !jobStatuses[r.Status] {
-		return "无效的投递状态"
+	if len([]rune(r.CurrentStatus)) > 200 {
+		return "当前状态不超过 200 字"
+	}
+	if len([]rune(r.Links)) > 1000 {
+		return "证据链接不超过 1000 字"
+	}
+	if len([]rune(r.VerifiedAt)) > 10 {
+		return "核验日期格式不正确"
 	}
 	return ""
 }
@@ -112,9 +127,11 @@ func (s *Server) CreateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, position, city, status, url, note)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, u.ID, req.Company, req.Position, req.City, req.Status, req.URL, req.Note)
+	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, industry, positions_27,
+			confirm_level, strength, city, current_status, links, verified_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		u.ID, u.ID, req.Company, req.Industry, req.Positions27,
+		req.ConfirmLevel, req.Strength, req.City, req.CurrentStatus, req.Links, req.VerifiedAt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -140,8 +157,11 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, position=?, city=?, status=?, url=?, note=?, last_editor_id=?, updated_at=? WHERE id=?`,
-		req.Company, req.Position, req.City, req.Status, req.URL, req.Note, u.ID, time.Now(), id)
+	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, positions_27=?, confirm_level=?,
+			strength=?, city=?, current_status=?, links=?, verified_at=?, last_editor_id=?, updated_at=?
+		WHERE id=?`,
+		req.Company, req.Industry, req.Positions27, req.ConfirmLevel,
+		req.Strength, req.City, req.CurrentStatus, req.Links, req.VerifiedAt, u.ID, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
