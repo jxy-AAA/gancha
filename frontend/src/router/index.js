@@ -12,6 +12,7 @@ const routes = [
   { path: '/forum', name: 'forum', component: () => import('../views/ForumView.vue') },
   { path: '/forum/new', name: 'forum-new', component: () => import('../views/ForumNewView.vue') },
   { path: '/forum/:id', name: 'forum-detail', component: () => import('../views/ForumDetailView.vue') },
+  { path: '/jobs', name: 'jobs', component: () => import('../views/JobsView.vue') },
   { path: '/login', name: 'login', component: () => import('../views/LoginView.vue') },
   { path: '/register', name: 'register', component: () => import('../views/RegisterView.vue') },
   { path: '/profile', name: 'profile', component: () => import('../views/ProfileView.vue') },

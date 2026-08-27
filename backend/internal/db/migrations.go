@@ -146,6 +146,20 @@ CREATE TABLE IF NOT EXISTS notifications (
   KEY idx_notifications_user (user_id, is_read, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS job_entries (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT UNSIGNED NOT NULL,
+  company VARCHAR(100) NOT NULL,
+  position VARCHAR(100) NOT NULL,
+  city VARCHAR(50) NOT NULL DEFAULT '',
+  status ENUM('pending','applied','test','interview','offer','rejected') NOT NULL DEFAULT 'pending',
+  url VARCHAR(500) NOT NULL DEFAULT '',
+  note VARCHAR(500) NOT NULL DEFAULT '',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_job_entries_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS uploads_meta (
   filename VARCHAR(255) PRIMARY KEY,
   user_id BIGINT UNSIGNED NOT NULL,

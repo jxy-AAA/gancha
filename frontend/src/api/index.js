@@ -65,6 +65,12 @@ export default {
   updateForumReply: (id, d) => api.put(`/forum/replies/${id}`, d),
   deleteForumReply: (id) => api.delete(`/forum/replies/${id}`),
 
+  // 就业共享表格
+  jobs: () => api.get('/jobs'),
+  createJob: (d) => api.post('/jobs', d),
+  updateJob: (id, d) => api.put(`/jobs/${id}`, d),
+  deleteJob: (id) => api.delete(`/jobs/${id}`),
+
   // 通知
   notifications: () => api.get('/notifications'),
   readNotifications: () => api.post('/notifications/read'),

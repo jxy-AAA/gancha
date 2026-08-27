@@ -11,6 +11,7 @@ const notifications = ref([])
 const unread = ref(0)
 const error = ref('')
 const hint = ref('')
+const stats = ref({ following: 0, followers: 0, received_likes: 0, posts: 0, comments: 0 })
 const oldPassword = ref('')
 const newPassword = ref('')
 const passwordHint = ref('')
@@ -20,6 +21,7 @@ onMounted(async () => {
   try {
     const { data } = await api.me()
     profile.value = { username: data.username, bio: data.bio, expertise: data.expertise }
+    stats.value = data.stats || { following: 0, followers: 0, received_likes: 0, posts: 0, comments: 0 }
     const { data: nd } = await api.notifications()
     notifications.value = nd.items
     unread.value = nd.unread
@@ -76,6 +78,28 @@ async function logout() {
     </div>
     <div class="layout">
       <div>
+        <div class="stat-grid" style="grid-template-columns: repeat(5, 1fr)">
+          <div class="stat-cell">
+            <strong>{{ stats.following }}</strong>
+            <span>关注了</span>
+          </div>
+          <div class="stat-cell">
+            <strong>{{ stats.followers }}</strong>
+            <span>关注者</span>
+          </div>
+          <div class="stat-cell">
+            <strong>{{ stats.received_likes }}</strong>
+            <span>获得赞</span>
+          </div>
+          <div class="stat-cell">
+            <strong>{{ stats.posts }}</strong>
+            <span>发帖</span>
+          </div>
+          <div class="stat-cell">
+            <strong>{{ stats.comments }}</strong>
+            <span>评论</span>
+          </div>
+        </div>
         <div class="form-card">
           <label>显示名称</label>
           <input v-model="profile.username" type="text" maxlength="30" />

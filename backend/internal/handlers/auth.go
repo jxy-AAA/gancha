@@ -136,14 +136,36 @@ func (s *Server) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
-// Me 当前用户信息（含个人资料字段）。
+// Me 当前用户信息（含个人资料字段与社区统计）。
 func (s *Server) Me(c *gin.Context) {
 	u, _ := middleware.CurrentUser(c)
 	var bio, expertise string
 	_ = s.DB.QueryRow(`SELECT bio, expertise FROM users WHERE id=?`, u.ID).Scan(&bio, &expertise)
+
+	var following, followers, receivedLikes, posts, comments int
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM user_follows WHERE follower_id=?`, u.ID).Scan(&following)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM user_follows WHERE followed_id=?`, u.ID).Scan(&followers)
+	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM votes WHERE
+		(target_type='question' AND target_id IN (SELECT id FROM questions WHERE user_id=?)) OR
+		(target_type='answer' AND target_id IN (SELECT id FROM answers WHERE user_id=?)) OR
+		(target_type='forum_post' AND target_id IN (SELECT id FROM forum_posts WHERE user_id=?)) OR
+		(target_type='forum_reply' AND target_id IN (SELECT id FROM forum_replies WHERE user_id=?))`,
+		u.ID, u.ID, u.ID, u.ID).Scan(&receivedLikes)
+	_ = s.DB.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM questions WHERE user_id=?) + (SELECT COUNT(*) FROM forum_posts WHERE user_id=?)`,
+		u.ID, u.ID).Scan(&posts)
+	_ = s.DB.QueryRow(`SELECT
+		(SELECT COUNT(*) FROM answers WHERE user_id=?) + (SELECT COUNT(*) FROM forum_replies WHERE user_id=?) +
+		(SELECT COUNT(*) FROM comments WHERE user_id=?)`,
+		u.ID, u.ID, u.ID).Scan(&comments)
+
 	c.JSON(http.StatusOK, gin.H{
 		"id": u.ID, "username": u.Username, "email": u.Email, "role": u.Role, "avatar": u.Avatar,
 		"bio": bio, "expertise": expertise,
+		"stats": gin.H{
+			"following": following, "followers": followers, "received_likes": receivedLikes,
+			"posts": posts, "comments": comments,
+		},
 	})
 }
 

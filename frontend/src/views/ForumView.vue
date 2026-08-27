@@ -1,9 +1,11 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../api'
 import Pagination from '../components/Pagination.vue'
 import { timeAgo } from '../utils/time'
 
+const router = useRouter()
 const boards = ref([])
 const items = ref([])
 const total = ref(0)
@@ -66,6 +68,13 @@ onMounted(async () => {
     </div>
 
     <div class="feed" style="margin-bottom: 22px">
+      <div class="card job-portal" @click="router.push('/jobs')">
+        <h3 style="font-size: 15px">
+          💼 就业信息 · 秋招共享表
+          <span style="color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 10px">公司 / 岗位 / 投递进度共享表格，人人可编辑</span>
+          <span style="margin-left: auto; color: var(--primary); font-weight: 600; font-size: 12px">进入表格 →</span>
+        </h3>
+      </div>
       <div v-for="b in boards" :key="b.id" class="card" style="cursor: pointer" @click="onBoard(b.id === boardId ? 0 : b.id)">
         <h3 style="font-size: 15px">
           {{ b.name }}

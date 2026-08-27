@@ -103,6 +103,12 @@ func main() {
 		api.PUT("/forum/replies/:id", middleware.Auth(conn, cfg.JWTSecret), h.UpdateForumReply)
 		api.DELETE("/forum/replies/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteForumReply)
 
+		// 就业共享表格
+		api.GET("/jobs", h.ListJobs)
+		api.POST("/jobs", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(20, time.Minute), h.CreateJob)
+		api.PUT("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(30, time.Minute), h.UpdateJob)
+		api.DELETE("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteJob)
+
 		// 通知
 		api.GET("/notifications", middleware.Auth(conn, cfg.JWTSecret), h.ListNotifications)
 		api.POST("/notifications/read", middleware.Auth(conn, cfg.JWTSecret), h.ReadNotifications)
