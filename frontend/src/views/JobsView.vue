@@ -201,7 +201,7 @@ onMounted(load)
               </td>
               <td><input v-model="it._edit.url" maxlength="500" /></td>
               <td><input v-model="it._edit.note" maxlength="500" /></td>
-              <td class="job-dim">{{ it.author }}</td>
+              <td class="job-dim">{{ it.updater || it.author }}</td>
               <td class="job-dim">{{ timeAgo(it.updated_at) }}</td>
               <td>
                 <button class="filter-btn" :disabled="saving" @click="submitEdit(it)">保存</button>
@@ -218,7 +218,7 @@ onMounted(load)
                 <span v-else class="job-dim">—</span>
               </td>
               <td class="job-note">{{ it.note || '—' }}</td>
-              <td class="job-dim">{{ it.author }}</td>
+              <td class="job-dim">{{ it.updater || it.author }}</td>
               <td class="job-dim">{{ timeAgo(it.updated_at) }}</td>
               <td>
                 <button class="filter-btn" @click="startEdit(it)">编辑</button>

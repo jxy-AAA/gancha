@@ -25,9 +25,10 @@ var jobStatuses = map[string]bool{
 // ListJobs 就业共享表格：全量返回，按更新时间倒序。
 func (s *Server) ListJobs(c *gin.Context) {
 	rows, err := s.DB.Query(`SELECT j.id, j.user_id, j.company, j.position, j.city, j.status,
-			j.url, j.note, j.created_at, j.updated_at, u.username
+			j.url, j.note, j.created_at, j.updated_at, u.username, COALESCE(le.username, u.username)
 		FROM job_entries j
 		JOIN users u ON u.id=j.user_id
+		LEFT JOIN users le ON le.id=j.last_editor_id
 		ORDER BY j.updated_at DESC, j.id DESC`)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -37,22 +38,23 @@ func (s *Server) ListJobs(c *gin.Context) {
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var (
-			id, uid    int64
-			company    string
-			position   string
-			city       string
-			status     string
-			url, note  string
-			created    time.Time
-			updated    time.Time
-			author     string
+			id, uid   int64
+			company   string
+			position  string
+			city      string
+			status    string
+			url, note string
+			created   time.Time
+			updated   time.Time
+			author    string
+			updater   string
 		)
 		if rows.Scan(&id, &uid, &company, &position, &city, &status,
-			&url, &note, &created, &updated, &author) == nil {
+			&url, &note, &created, &updated, &author, &updater) == nil {
 			items = append(items, gin.H{
 				"id": id, "user_id": uid, "company": company, "position": position,
 				"city": city, "status": status, "url": url, "note": note,
-				"created_at": created, "updated_at": updated, "author": author,
+				"created_at": created, "updated_at": updated, "author": author, "updater": updater,
 			})
 		}
 	}
@@ -110,9 +112,9 @@ func (s *Server) CreateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, company, position, city, status, url, note)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		u.ID, req.Company, req.Position, req.City, req.Status, req.URL, req.Note)
+	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, position, city, status, url, note)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		u.ID, u.ID, req.Company, req.Position, req.City, req.Status, req.URL, req.Note)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -121,9 +123,9 @@ func (s *Server) CreateJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"id": id})
 }
 
-// UpdateJob 编辑任意行（共享表格，登录用户均可），刷新更新时间。
+// UpdateJob 编辑任意行（共享表格，登录用户均可），刷新更新时间与最后编辑人。
 func (s *Server) UpdateJob(c *gin.Context) {
-	_, _ = middleware.CurrentUser(c)
+	u, _ := middleware.CurrentUser(c)
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -138,8 +140,8 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, position=?, city=?, status=?, url=?, note=?, updated_at=? WHERE id=?`,
-		req.Company, req.Position, req.City, req.Status, req.URL, req.Note, time.Now(), id)
+	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, position=?, city=?, status=?, url=?, note=?, last_editor_id=?, updated_at=? WHERE id=?`,
+		req.Company, req.Position, req.City, req.Status, req.URL, req.Note, u.ID, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
