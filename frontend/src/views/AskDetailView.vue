@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
@@ -41,7 +41,13 @@ async function load() {
     api.viewQuestion(qid.value).catch(() => {})
   } finally {
     loading.value = false
+    nextTick(scrollToAnswers)
   }
+}
+
+function scrollToAnswers() {
+  if (route.hash !== '#answers') return
+  document.getElementById('answers')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 async function loadMine() {
@@ -223,7 +229,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="detail-card">
+    <div class="detail-card" id="answers">
       <h2 style="font-size: 18px">回答 {{ q.answer_count || answers.length }}</h2>
       <div v-if="!answers.length" class="empty-note" style="padding: 30px 0">还没有回答，来写下第一个回答吧</div>
       <div v-for="a in answers" :key="a.id" class="answer-item">

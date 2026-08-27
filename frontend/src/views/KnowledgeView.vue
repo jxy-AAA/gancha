@@ -1,15 +1,21 @@
 <script setup>
 import { onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Pagination from '../components/Pagination.vue'
 import { timeAgo } from '../utils/time'
 
+const router = useRouter()
+const auth = useAuthStore()
 const items = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = 10
 const search = ref('')
 const loading = ref(false)
+const votedMap = ref({})
+const busyId = ref(0)
 
 async function load() {
   loading.value = true
@@ -32,6 +38,18 @@ function onSearch() {
 function onPage(p) {
   page.value = p
   load()
+}
+async function toggleVote(a) {
+  if (!auth.isLoggedIn) return router.push('/login?redirect=/knowledge')
+  if (busyId.value) return
+  busyId.value = a.id
+  try {
+    const { data } = await api.toggleVote({ target_type: 'article', target_id: a.id })
+    votedMap.value[a.id] = data.voted
+    a.score += data.voted ? 1 : -1
+  } finally {
+    busyId.value = 0
+  }
 }
 onMounted(load)
 </script>
@@ -61,7 +79,10 @@ onMounted(load)
           <span v-if="a.tags">
             <span v-for="t in a.tags.split(',').filter(Boolean).slice(0, 4)" :key="t" class="tag">{{ t.trim() }}</span>
           </span>
-          <span>▲ {{ a.score ?? 0 }}</span>
+          <button class="stat-btn" :class="{ active: votedMap[a.id] }" :disabled="busyId === a.id"
+            @click="toggleVote(a)">
+            ▲ {{ a.score ?? 0 }}
+          </button>
           <span>💬 {{ a.comment_count ?? 0 }}</span>
           <span style="margin-left: auto">
             <img v-if="a.author_avatar" :src="a.author_avatar" class="avatar" alt="" />

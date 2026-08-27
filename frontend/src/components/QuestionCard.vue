@@ -19,6 +19,14 @@ const busy = ref(false)
 const statusLabel = { open: '待解决', solved: '已解决', closed: '已关闭' }
 const statusClass = { open: 'badge-gray', solved: 'badge-green', closed: 'badge-gray' }
 
+function goDetail() {
+  router.push(`/ask/${props.q.id}`)
+}
+
+function goAnswers() {
+  router.push(`/ask/${props.q.id}#answers`)
+}
+
 async function toggleVote() {
   if (!auth.isLoggedIn) return router.push('/login?redirect=/ask')
   if (busy.value) return
@@ -34,20 +42,17 @@ async function toggleVote() {
 </script>
 
 <template>
-  <div class="card">
-    <h3>
-      <router-link :to="`/ask/${q.id}`">{{ q.title }}</router-link>
-    </h3>
+  <div class="card clickable-card" @click="goDetail">
+    <h3>{{ q.title }}</h3>
     <p v-if="showBody && q.body" class="excerpt">{{ q.body.replace(/[#*`$>\[\]|]/g, '').slice(0, 160) }}</p>
     <div class="meta">
       <span class="badge">{{ q.category_name }}</span>
       <span :class="['badge', statusClass[q.status]]">{{ statusLabel[q.status] }}</span>
-      <button class="like-btn" :class="{ active: voted }" :disabled="busy" @click.stop="toggleVote">
+      <button class="stat-btn" :class="{ active: voted }" :disabled="busy" @click.stop="toggleVote">
         ▲ {{ score }}
       </button>
-      <span>💬 {{ q.comment_count ?? 0 }}</span>
-      <span>回答 {{ q.answer_count }}</span>
-      <span>浏览 {{ q.views }}</span>
+      <span class="stat-btn" @click.stop="goAnswers">回答 {{ q.answer_count }}</span>
+      <span class="stat-btn">浏览 {{ q.views }}</span>
       <span v-if="q.tags">
         <span v-for="t in q.tags.split(',').filter(Boolean).slice(0, 4)" :key="t" class="tag">{{ t.trim() }}</span>
       </span>
