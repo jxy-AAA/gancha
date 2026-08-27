@@ -60,7 +60,8 @@ func (s *Server) ListQuestions(c *gin.Context) {
 	rows, err := s.DB.Query(`SELECT q.id, q.category_id, cat.name, q.title, q.body, q.tags, q.views,
 			q.status, q.accepted_answer_id, u.username, u.avatar, q.created_at, q.edited_at,
 			(SELECT COUNT(*) FROM answers a WHERE a.question_id=q.id) AS answer_count,
-			(SELECT COUNT(*) FROM votes v WHERE v.target_type='question' AND v.target_id=q.id) AS score
+			(SELECT COUNT(*) FROM votes v WHERE v.target_type='question' AND v.target_id=q.id) AS score,
+			(SELECT COUNT(*) FROM comments cm WHERE cm.question_id=q.id) AS comment_count
 		FROM questions q
 		JOIN users u ON u.id=q.user_id
 		LEFT JOIN categories cat ON cat.id=q.category_id
@@ -87,9 +88,10 @@ func (s *Server) ListQuestions(c *gin.Context) {
 			edited     sql.NullTime
 			answers    int
 			score      int
+			commentCnt int
 		)
 		if err := rows.Scan(&id, &catID, &catName, &title, &body, &tag, &views, &status, &accepted,
-			&author, &avatar, &created, &edited, &answers, &score); err != nil {
+			&author, &avatar, &created, &edited, &answers, &score, &commentCnt); err != nil {
 			continue
 		}
 		item = gin.H{
@@ -97,6 +99,7 @@ func (s *Server) ListQuestions(c *gin.Context) {
 			"title": title, "body": body, "tags": tag, "views": views, "status": status,
 			"accepted_answer_id": accepted.Int64, "author": author, "author_avatar": avatar.String,
 			"created_at": created, "edited_at": edited.Time, "answer_count": answers, "score": score,
+			"comment_count": commentCnt,
 		}
 		items = append(items, item)
 	}

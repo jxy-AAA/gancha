@@ -29,6 +29,16 @@ func Open(dsn string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
+	// 现有环境的 votes.target_type ENUM 升级（幂等：仅当缺 'article' 时 ALTER）
+	var colType string
+	_ = conn.QueryRow(`SELECT COLUMN_TYPE FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='votes' AND COLUMN_NAME='target_type'`).Scan(&colType)
+	if colType != "" && !strings.Contains(colType, "'article'") {
+		if _, err := conn.Exec(`ALTER TABLE votes MODIFY COLUMN target_type
+			ENUM('question','answer','forum_post','forum_reply','article') NOT NULL`); err != nil {
+			return nil, err
+		}
+	}
 	for _, stmt := range Seed {
 		if _, err := conn.Exec(stmt); err != nil {
 			return nil, err

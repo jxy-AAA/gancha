@@ -61,6 +61,8 @@ onMounted(load)
           <span v-if="a.tags">
             <span v-for="t in a.tags.split(',').filter(Boolean).slice(0, 4)" :key="t" class="tag">{{ t.trim() }}</span>
           </span>
+          <span>▲ {{ a.score ?? 0 }}</span>
+          <span>💬 {{ a.comment_count ?? 0 }}</span>
           <span style="margin-left: auto">
             <img v-if="a.author_avatar" :src="a.author_avatar" class="avatar" alt="" />
             {{ a.author }} · 浏览 {{ a.views }} · {{ timeAgo(a.created_at) }}

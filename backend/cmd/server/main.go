@@ -90,6 +90,9 @@ func main() {
 		api.PUT("/articles/:id", middleware.Auth(conn, cfg.JWTSecret), h.UpdateArticle)
 		api.DELETE("/articles/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteArticle)
 		api.POST("/articles/:id/view", h.RegisterArticleView)
+		api.GET("/articles/:id/comments", h.ListArticleComments)
+		api.POST("/articles/:id/comments", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(10, time.Minute), h.CreateArticleComment)
+		api.DELETE("/article-comments/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteArticleComment)
 
 		// 论坛
 		api.GET("/boards", h.ListBoards)

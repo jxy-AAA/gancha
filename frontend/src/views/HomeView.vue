@@ -50,17 +50,17 @@ onMounted(async () => {
 
     <section class="section-tabs">
       <router-link class="portal-card" to="/ask">
-        <h3>📮 问题投稿</h3>
+        <h3>问题投稿</h3>
         <p>提出你在光学学习与工程实践中的问题，社区一起解答。支持公式与图片，采纳回答后问题标记为已解决。</p>
         <span class="portal-arrow">进入问答 →</span>
       </router-link>
       <router-link class="portal-card" to="/knowledge">
-        <h3>📚 知识库</h3>
+        <h3>知识库</h3>
         <p>沉淀可靠的光学知识文章：从基础概念到工程经验，按需检索，随手分享你的知识。</p>
         <span class="portal-arrow">浏览知识库 →</span>
       </router-link>
       <router-link class="portal-card" to="/forum">
-        <h3>💬 论坛</h3>
+        <h3>论坛</h3>
         <p>自由讨论光学相关话题：行业动态、学术前沿、学习资源与经验交流。</p>
         <span class="portal-arrow">进入论坛 →</span>
       </router-link>

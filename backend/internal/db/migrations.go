@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS comments (
 
 CREATE TABLE IF NOT EXISTS votes (
   user_id BIGINT UNSIGNED NOT NULL,
-  target_type ENUM('question','answer','forum_post','forum_reply') NOT NULL,
+  target_type ENUM('question','answer','forum_post','forum_reply','article') NOT NULL,
   target_id BIGINT UNSIGNED NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, target_type, target_id)
@@ -159,6 +159,15 @@ CREATE TABLE IF NOT EXISTS job_entries (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_job_entries_updated (updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS article_comments (
+  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  article_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  body VARCHAR(500) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_article_comments_article (article_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS uploads_meta (

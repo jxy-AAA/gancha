@@ -1,13 +1,36 @@
 <script setup>
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import api from '../api'
 import { timeAgo } from '../utils/time'
 
-defineProps({
+const props = defineProps({
   q: { type: Object, required: true },
   showBody: { type: Boolean, default: true },
 })
 
+const router = useRouter()
+const auth = useAuthStore()
+const voted = ref(props.q.voted || false)
+const score = ref(props.q.score || 0)
+const busy = ref(false)
+
 const statusLabel = { open: '待解决', solved: '已解决', closed: '已关闭' }
 const statusClass = { open: 'badge-gray', solved: 'badge-green', closed: 'badge-gray' }
+
+async function toggleVote() {
+  if (!auth.isLoggedIn) return router.push('/login?redirect=/ask')
+  if (busy.value) return
+  busy.value = true
+  try {
+    const { data } = await api.toggleVote({ target_type: 'question', target_id: props.q.id })
+    voted.value = data.voted
+    score.value += data.voted ? 1 : -1
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -19,7 +42,10 @@ const statusClass = { open: 'badge-gray', solved: 'badge-green', closed: 'badge-
     <div class="meta">
       <span class="badge">{{ q.category_name }}</span>
       <span :class="['badge', statusClass[q.status]]">{{ statusLabel[q.status] }}</span>
-      <span>▲ {{ q.score }}</span>
+      <button class="like-btn" :class="{ active: voted }" :disabled="busy" @click.stop="toggleVote">
+        ▲ {{ score }}
+      </button>
+      <span>💬 {{ q.comment_count ?? 0 }}</span>
       <span>回答 {{ q.answer_count }}</span>
       <span>浏览 {{ q.views }}</span>
       <span v-if="q.tags">

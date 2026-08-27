@@ -45,6 +45,11 @@ export default {
   toggleVote: (d) => api.post('/votes', d),
   voteStatus: (d) => api.post('/votes/status', d),
 
+  // 文章评论
+  articleComments: (id) => api.get(`/articles/${id}/comments`),
+  createArticleComment: (id, d) => api.post(`/articles/${id}/comments`, d),
+  deleteArticleComment: (id) => api.delete(`/article-comments/${id}`),
+
   // 知识库
   articles: (params) => api.get('/articles', { params }),
   article: (id) => api.get(`/articles/${id}`),

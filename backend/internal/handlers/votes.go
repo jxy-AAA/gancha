@@ -9,7 +9,7 @@ import (
 )
 
 type voteReq struct {
-	TargetType string `json:"target_type"` // question | answer | forum_post | forum_reply
+	TargetType string `json:"target_type"` // question | answer | forum_post | forum_reply | article
 	TargetID   int64  `json:"target_id"`
 }
 
@@ -22,7 +22,7 @@ func (s *Server) ToggleVote(c *gin.Context) {
 		return
 	}
 	switch req.TargetType {
-	case "question", "answer", "forum_post", "forum_reply":
+	case "question", "answer", "forum_post", "forum_reply", "article":
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的点赞目标类型"})
 		return
@@ -41,6 +41,8 @@ func (s *Server) ToggleVote(c *gin.Context) {
 		table = "forum_posts"
 	case "forum_reply":
 		table = "forum_replies"
+	case "article":
+		table = "articles"
 	}
 	var exists int
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM `+table+` WHERE id=?`, req.TargetID).Scan(&exists)

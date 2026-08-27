@@ -70,7 +70,7 @@ onMounted(async () => {
     <div class="feed" style="margin-bottom: 22px">
       <div class="card job-portal" @click="router.push('/jobs')">
         <h3 style="font-size: 15px">
-          💼 就业信息 · 秋招共享表
+          就业信息 · 秋招共享表
           <span style="color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 10px">公司 / 岗位 / 投递进度共享表格，人人可编辑</span>
           <span style="margin-left: auto; color: var(--primary); font-weight: 600; font-size: 12px">进入表格 →</span>
         </h3>

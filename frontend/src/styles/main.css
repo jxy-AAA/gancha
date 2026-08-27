@@ -473,6 +473,28 @@ button.text-link {
   border-color: var(--blue);
   color: var(--blue);
 }
+.like-btn {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.like-btn:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+}
+.like-btn.active {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue);
+}
 .ghost-danger {
   border: 0;
   background: transparent;
