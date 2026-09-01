@@ -154,11 +154,16 @@ func (s *Server) CreateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
+	// 填了内推码就自动置顶（蓝色效果）
+	pinned := 0
+	if req.ReferralCode != "" {
+		pinned = 1
+	}
 	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
 			city, apply_link, referral_code, verified_at, status, is_pinned, edit_reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
 		u.ID, u.ID, req.Company, req.Industry,
-		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, req.EditReason)
+		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, pinned, req.EditReason)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -198,11 +203,12 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		oldCompany, oldIndustry string
 		oldCity, oldApply       string
 		oldReferral, oldVerified string
+		oldPinned               bool
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, is_pinned FROM job_entries WHERE id=?`, id).
 		Scan(&oldCompany, &oldIndustry,
-			&oldCity, &oldApply, &oldReferral, &oldVerified)
+			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldPinned)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -211,12 +217,14 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
+	// 填了内推码就自动置顶（蓝色效果）；没填则保持原置顶状态不变
+	pinned := oldPinned || req.ReferralCode != ""
 	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
-			referral_code=?, verified_at=?, status='active',
+			referral_code=?, verified_at=?, status='active', is_pinned=?,
 			last_editor_id=?, edit_reason=?, updated_at=?
 		WHERE id=?`,
 		req.Company, req.Industry, req.City, req.ApplyLink,
-		req.ReferralCode, req.VerifiedAt,
+		req.ReferralCode, req.VerifiedAt, pinned,
 		u.ID, req.EditReason, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
