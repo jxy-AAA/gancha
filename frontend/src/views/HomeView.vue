@@ -145,7 +145,7 @@ onMounted(async () => {
             {{ j.company }}
           </h3>
           <p class="excerpt">
-            {{ [j.industry, j.city, j.current_status].filter(Boolean).join(' ｜ ') || j.positions_27 || '点击查看招聘详情' }}
+            {{ [j.industry, j.city, j.referral_code].filter(Boolean).join(' ｜ ') || '点击查看招聘详情' }}
           </p>
           <div class="meta">
             <span class="badge badge-teal">就业信息</span>

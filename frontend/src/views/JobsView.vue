@@ -30,8 +30,6 @@ const reviewAnon = ref({})
 
 const statusLabel = { active: '正常', invalid: '已失效', duplicate: '重复', all: '全部' }
 const statusClass = { active: 'badge-green', invalid: 'badge-gray', duplicate: 'badge-teal' }
-const credibilityLabel = { 强: '可信度高', 中: '可信度中', 弱: '可信度低' }
-const credibilityClass = { 强: 'cred-strong', 中: 'cred-mid', 弱: 'cred-weak' }
 
 const cityOptions = computed(() => {
   const set = new Set()
@@ -104,8 +102,8 @@ const newForm = ref(null)
 function startCreate() {
   if (!requireLogin()) return
   newForm.value = {
-    company: '', industry: '', positions_27: '', confirm_level: '',
-    strength: '', city: '', current_status: '', links: '', verified_at: '', edit_reason: '',
+    company: '', industry: '', city: '', apply_link: '',
+    referral_code: '', verified_at: '', edit_reason: '',
   }
   panel.value = { id: 0, mode: '' }
 }
@@ -133,9 +131,8 @@ function startEdit(it) {
   if (!requireLogin()) return
   panel.value = { id: it.id, mode: 'edit' }
   editForm.value = {
-    company: it.company, industry: it.industry, positions_27: it.positions_27,
-    confirm_level: it.confirm_level, strength: it.strength, city: it.city,
-    current_status: it.current_status, links: it.links, verified_at: it.verified_at,
+    company: it.company, industry: it.industry, city: it.city,
+    apply_link: it.apply_link, referral_code: it.referral_code, verified_at: it.verified_at,
     edit_reason: '',
   }
 }
@@ -361,17 +358,10 @@ onMounted(load)
         <label>公司 *<input v-model="newForm.company" maxlength="100" placeholder="公司名称" /></label>
         <label>产业链 / 光学方向<input v-model="newForm.industry" maxlength="200" placeholder="如：车载光学、AR/VR" /></label>
         <label>地点<input v-model="newForm.city" maxlength="100" placeholder="如：深圳、上海等" /></label>
-        <label>证据强度
-          <select v-model="newForm.strength">
-            <option value="">—</option><option>强</option><option>中</option><option>弱</option>
-          </select>
-        </label>
-        <label>岗位确认度<input v-model="newForm.confirm_level" maxlength="300" placeholder="如：A级，已确认校招" /></label>
-        <label>当前状态<input v-model="newForm.current_status" maxlength="200" placeholder="如：27届补录/校招进行中" /></label>
+        <label>内推码<input v-model="newForm.referral_code" maxlength="50" placeholder="如：NTxxxxxx" /></label>
         <label>上次核验<input v-model="newForm.verified_at" type="date" /></label>
-        <label>证据来源备注<input v-model="newForm.edit_reason" maxlength="200" placeholder="可选：信息的来源/备注" /></label>
-        <label class="job-form-wide">27届项目与光学岗位<textarea v-model="newForm.positions_27" maxlength="500" rows="2" /></label>
-        <label class="job-form-wide">证据链接<textarea v-model="newForm.links" maxlength="1000" rows="2" placeholder="每行一个链接" /></label>
+        <label>来源备注<input v-model="newForm.edit_reason" maxlength="200" placeholder="可选：信息的来源/备注" /></label>
+        <label class="job-form-wide">投递链接<textarea v-model="newForm.apply_link" maxlength="1000" rows="2" placeholder="每行一个链接" /></label>
       </div>
       <div class="job-form-actions">
         <button class="filter-btn" :disabled="saving" @click="submitCreate">保存</button>
@@ -391,7 +381,6 @@ onMounted(load)
           <div class="job-card-title">
             <span v-if="it.is_pinned" class="badge badge-pinned">置顶</span>
             <span :class="['badge', statusClass[it.status]]">{{ statusLabel[it.status] }}</span>
-            <span v-if="it.strength" class="badge" :class="credibilityClass[it.strength]">{{ credibilityLabel[it.strength] }}</span>
             <h3>{{ it.company }}</h3>
           </div>
           <div class="job-card-actions">
@@ -404,13 +393,11 @@ onMounted(load)
         <div class="job-card-rows">
           <div v-if="it.industry" class="job-row"><b>方向</b><span>{{ it.industry }}</span></div>
           <div v-if="it.city" class="job-row"><b>地点</b><span>{{ it.city }}</span></div>
-          <div v-if="it.positions_27" class="job-row"><b>27届项目与光学岗位</b><span class="job-pre">{{ it.positions_27 }}</span></div>
-          <div v-if="it.confirm_level" class="job-row"><b>岗位确认度</b><span>{{ it.confirm_level }}</span></div>
-          <div v-if="it.current_status" class="job-row"><b>当前状态</b><span>{{ it.current_status }}</span></div>
-          <div class="job-row"><b>证据来源</b>
+          <div v-if="it.referral_code" class="job-row"><b>内推码</b><span>{{ it.referral_code }}</span></div>
+          <div class="job-row"><b>投递链接</b>
             <span>
-              <template v-if="linkList(it.links).length">
-                <a v-for="(l, i) in linkList(it.links)" :key="i" :href="l" target="_blank" rel="noopener"
+              <template v-if="linkList(it.apply_link).length">
+                <a v-for="(l, i) in linkList(it.apply_link)" :key="i" :href="l" target="_blank" rel="noopener"
                   class="text-link job-link">链接{{ i + 1 }}↗</a>
               </template>
               <span v-else class="job-dim">—</span>
@@ -451,19 +438,12 @@ onMounted(load)
               <label>公司 *<input v-model="editForm.company" maxlength="100" /></label>
               <label>产业链 / 光学方向<input v-model="editForm.industry" maxlength="200" /></label>
               <label>地点<input v-model="editForm.city" maxlength="100" /></label>
-              <label>证据强度
-                <select v-model="editForm.strength">
-                  <option value="">—</option><option>强</option><option>中</option><option>弱</option>
-                </select>
-              </label>
-              <label>岗位确认度<input v-model="editForm.confirm_level" maxlength="300" /></label>
-              <label>当前状态<input v-model="editForm.current_status" maxlength="200" /></label>
+              <label>内推码<input v-model="editForm.referral_code" maxlength="50" /></label>
               <label>上次核验<input v-model="editForm.verified_at" type="date" /></label>
               <label class="job-form-wide job-reason">
                 修改原因 *<input v-model="editForm.edit_reason" maxlength="200" placeholder="说明这次改了什么、为什么改" />
               </label>
-              <label class="job-form-wide">27届项目与光学岗位<textarea v-model="editForm.positions_27" maxlength="500" rows="2" /></label>
-              <label class="job-form-wide">证据链接<textarea v-model="editForm.links" maxlength="1000" rows="2" placeholder="每行一个链接" /></label>
+              <label class="job-form-wide">投递链接<textarea v-model="editForm.apply_link" maxlength="1000" rows="2" placeholder="每行一个链接" /></label>
             </div>
             <div class="job-form-actions">
               <button class="filter-btn" :disabled="saving" @click="submitEdit">保存修改</button>
@@ -494,8 +474,8 @@ onMounted(load)
                 <button v-if="auth.isAdmin && panel.id === it.id" class="ghost-btn" style="margin-left: auto"
                   @click="revertVersion(it, v)">恢复此版本</button>
               </div>
-              <div v-if="v.industry || v.city || v.positions_27" class="job-version-body job-dim">
-                {{ [v.industry, v.city, v.positions_27].filter(Boolean).join(' ｜ ') }}
+              <div v-if="v.industry || v.city || v.referral_code" class="job-version-body job-dim">
+                {{ [v.industry, v.city, v.referral_code].filter(Boolean).join(' ｜ ') }}
               </div>
             </div>
           </template>
@@ -616,18 +596,6 @@ onMounted(load)
 .badge-pinned {
   background: #ffe9d6;
   color: #d2691e;
-}
-.cred-strong {
-  background: #e3f4e9;
-  color: #2e8b57;
-}
-.cred-mid {
-  background: #fdf3e0;
-  color: #b8860b;
-}
-.cred-weak {
-  background: #eef0f2;
-  color: #7a8288;
 }
 .job-card-rows {
   display: grid;

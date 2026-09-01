@@ -48,14 +48,25 @@ func Open(dsn string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
-	// 现有环境的 job_entries 升级为“2027届公司招聘信息”共享表格列（幂等：逐列检查后 ALTER）
+	// 现有环境的 job_entries 证据链列 links 更名为投递链接 apply_link（保留已有数据，幂等）
+	var hasApplyLink int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME='apply_link'`).Scan(&hasApplyLink)
+	if hasApplyLink == 0 {
+		var hasLinks int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME='links'`).Scan(&hasLinks)
+		if hasLinks > 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entries CHANGE COLUMN links apply_link VARCHAR(1000) NOT NULL DEFAULT ''`); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// 现有环境的 job_entries 升级为共享表格列（幂等：逐列检查后 ALTER）
 	for name, ddl := range map[string]string{
 		"industry":      "VARCHAR(200) NOT NULL DEFAULT ''",
-		"positions_27":  "VARCHAR(500) NOT NULL DEFAULT ''",
-		"confirm_level": "VARCHAR(300) NOT NULL DEFAULT ''",
-		"strength":      "VARCHAR(10) NOT NULL DEFAULT ''",
-		"current_status": "VARCHAR(200) NOT NULL DEFAULT ''",
-		"links":         "VARCHAR(1000) NOT NULL DEFAULT ''",
+		"apply_link":    "VARCHAR(1000) NOT NULL DEFAULT ''",
+		"referral_code": "VARCHAR(50) NOT NULL DEFAULT ''",
 		"verified_at":   "VARCHAR(10) NOT NULL DEFAULT ''",
 		"status":        "VARCHAR(20) NOT NULL DEFAULT 'active'",
 		"is_pinned":     "TINYINT(1) NOT NULL DEFAULT 0",
@@ -66,6 +77,49 @@ func Open(dsn string) (*sql.DB, error) {
 			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME=?`, name).Scan(&n)
 		if n == 0 {
 			if _, err := conn.Exec(`ALTER TABLE job_entries ADD COLUMN ` + name + ` ` + ddl); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// job_entries 已废弃字段（27届项目与光学岗位/岗位确认度/证据强度/当前状态）幂等删除
+	for _, col := range []string{"positions_27", "confirm_level", "strength", "current_status"} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME=?`, col).Scan(&n)
+		if n > 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entries DROP COLUMN ` + col); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// job_entry_versions 同步迁移：links 更名、新增内推码、删除废弃列（幂等）
+	var verHasApply int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entry_versions' AND COLUMN_NAME='apply_link'`).Scan(&verHasApply)
+	if verHasApply == 0 {
+		var verHasLinks int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entry_versions' AND COLUMN_NAME='links'`).Scan(&verHasLinks)
+		if verHasLinks > 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entry_versions CHANGE COLUMN links apply_link VARCHAR(1000) NOT NULL DEFAULT ''`); err != nil {
+				return nil, err
+			}
+		}
+	}
+	var verHasReferral int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entry_versions' AND COLUMN_NAME='referral_code'`).Scan(&verHasReferral)
+	if verHasReferral == 0 {
+		if _, err := conn.Exec(`ALTER TABLE job_entry_versions ADD COLUMN referral_code VARCHAR(50) NOT NULL DEFAULT ''`); err != nil {
+			return nil, err
+		}
+	}
+	for _, col := range []string{"positions_27", "confirm_level", "strength", "current_status"} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entry_versions' AND COLUMN_NAME=?`, col).Scan(&n)
+		if n > 0 {
+			if _, err := conn.Exec(`ALTER TABLE job_entry_versions DROP COLUMN ` + col); err != nil {
 				return nil, err
 			}
 		}

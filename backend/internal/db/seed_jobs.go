@@ -12,12 +12,9 @@ var jobsSeedJSON []byte
 type jobSeedRow struct {
 	Company      string `json:"company"`
 	Industry     string `json:"industry"`
-	Positions27  string `json:"positions_27"`
-	ConfirmLevel string `json:"confirm_level"`
-	Strength     string `json:"strength"`
 	City         string `json:"city"`
-	CurrentStatus string `json:"current_status"`
-	Links        string `json:"links"`
+	ApplyLink    string `json:"apply_link"`
+	ReferralCode string `json:"referral_code"`
 	VerifiedAt   string `json:"verified_at"`
 }
 
@@ -39,16 +36,16 @@ func seedJobEntries(conn *sql.DB) error {
 		return err
 	}
 	defer tx.Rollback()
-	stmt, err := tx.Prepare(`INSERT INTO job_entries (user_id, last_editor_id, company, industry, positions_27,
-		confirm_level, strength, city, current_status, links, verified_at)
-		VALUES (0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.Prepare(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
+		city, apply_link, referral_code, verified_at)
+		VALUES (0, 0, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, r := range rows {
-		if _, err := stmt.Exec(r.Company, r.Industry, r.Positions27, r.ConfirmLevel,
-			r.Strength, r.City, r.CurrentStatus, r.Links, r.VerifiedAt); err != nil {
+		if _, err := stmt.Exec(r.Company, r.Industry,
+			r.City, r.ApplyLink, r.ReferralCode, r.VerifiedAt); err != nil {
 			return err
 		}
 	}
