@@ -9,17 +9,20 @@ const router = useRouter()
 const latestQuestions = ref([])
 const latestArticles = ref([])
 const latestPosts = ref([])
+const latestJobs = ref([])
 
 onMounted(async () => {
   try {
-    const [q, a, p] = await Promise.all([
+    const [q, a, p, j] = await Promise.all([
       api.questions({ page: 1, page_size: 5 }),
       api.articles({ page: 1, page_size: 4 }),
       api.forumPosts({ page: 1, page_size: 4 }),
+      api.jobs({ status: 'active', page_size: 4 }),
     ])
     latestQuestions.value = q.data.items
     latestArticles.value = a.data.items
     latestPosts.value = p.data.items
+    latestJobs.value = j.data.items.slice(0, 4)
   } catch {
     /* 首页加载失败不阻塞展示 */
   }
@@ -63,6 +66,11 @@ onMounted(async () => {
         <h3>论坛</h3>
         <p>自由讨论光学相关话题：行业动态、学术前沿、学习资源与经验交流。</p>
         <span class="portal-arrow">进入论坛 →</span>
+      </router-link>
+      <router-link class="portal-card" to="/jobs">
+        <h3>就业信息</h3>
+        <p>2027 届光学公司校招共享数据库：人人可查看、可编辑，置顶新开公司，含真实评价与版本记录。</p>
+        <span class="portal-arrow">进入表格 →</span>
       </router-link>
     </section>
 
@@ -122,6 +130,41 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+
+      <div class="section-heading" style="margin-top: 36px">
+        <div>
+          <p class="eyebrow">JOBS</p>
+          <h2>最新招聘</h2>
+        </div>
+        <router-link class="text-link" to="/jobs">进入就业表格 ↗</router-link>
+      </div>
+      <div class="feed">
+        <div v-for="j in latestJobs" :key="j.id" class="card clickable-card" @click="router.push('/jobs')">
+          <h3>
+            <span v-if="j.is_pinned" class="badge badge-pinned">置顶</span>
+            {{ j.company }}
+          </h3>
+          <p class="excerpt">
+            {{ [j.industry, j.city, j.current_status].filter(Boolean).join(' ｜ ') || j.positions_27 || '点击查看招聘详情' }}
+          </p>
+          <div class="meta">
+            <span class="badge badge-teal">就业信息</span>
+            <span>核验 {{ j.verified_at || '—' }}</span>
+            <span style="margin-left: auto">更新于 {{ timeAgo(j.updated_at) }}</span>
+          </div>
+        </div>
+        <div v-if="!latestJobs.length" class="card">
+          <p class="excerpt" style="margin: 0">就业信息表格还在填充中，<router-link class="text-link" to="/jobs">点击进入表格查看或添加</router-link></p>
+        </div>
+      </div>
     </section>
   </div>
 </template>
+
+<style scoped>
+.badge-pinned {
+  background: #ffe9d6;
+  color: #d2691e;
+  margin-right: 6px;
+}
+</style>

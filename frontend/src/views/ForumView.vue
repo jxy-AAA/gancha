@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 import Pagination from '../components/Pagination.vue'
@@ -13,6 +13,7 @@ const page = ref(1)
 const pageSize = 10
 const boardId = ref(0)
 const search = ref('')
+const sort = ref('latest')
 const loading = ref(false)
 
 async function load() {
@@ -23,6 +24,7 @@ async function load() {
       page_size: pageSize,
       board_id: boardId.value || undefined,
       search: search.value || undefined,
+      sort: sort.value,
     })
     items.value = data.items
     total.value = data.total
@@ -43,6 +45,10 @@ function onPage(p) {
   page.value = p
   load()
 }
+watch(sort, () => {
+  page.value = 1
+  load()
+})
 onMounted(async () => {
   load()
   try {
@@ -63,6 +69,11 @@ onMounted(async () => {
         <input v-model="search" class="search-input" type="search" placeholder="搜索帖子"
           @keyup.enter="onSearch" />
         <button class="filter-btn" @click="onSearch">搜索</button>
+        <select v-model="sort" class="filter-btn">
+          <option value="latest">最新发布</option>
+          <option value="updated">最后回复</option>
+          <option value="popular">最热</option>
+        </select>
         <router-link class="primary-btn" to="/forum/new">+ 发帖</router-link>
       </div>
     </div>
@@ -88,15 +99,32 @@ onMounted(async () => {
     <div v-else-if="!items.length" class="empty-note">这个板块还没有帖子，来发第一帖吧</div>
     <div v-else class="feed">
       <div v-for="p in items" :key="p.id" class="card clickable-card" @click="router.push(`/forum/${p.id}`)">
-        <h3>{{ p.title }}</h3>
+        <h3>
+          <span v-if="p.is_pinned" class="badge badge-pinned">置顶</span>
+          <span v-if="p.is_solved" class="badge badge-green">已解决</span>
+          {{ p.title }}
+        </h3>
         <div class="meta">
           <span class="badge badge-teal">{{ p.board_name }}</span>
+          <span v-if="p.tags">
+            <span v-for="t in p.tags.split(',').filter(Boolean).slice(0, 4)" :key="t" class="tag">{{ t.trim() }}</span>
+          </span>
           <span>回复 {{ p.reply_count }}</span>
           <span>浏览 {{ p.views }}</span>
-          <span style="margin-left: auto">{{ p.author }} · {{ timeAgo(p.created_at) }}</span>
+          <span v-if="p.last_reply_at" style="margin-left: auto">
+            最后回复 {{ p.last_reply_author || '?' }} · {{ timeAgo(p.last_reply_at) }}
+          </span>
+          <span v-else style="margin-left: auto">{{ p.author }} · {{ timeAgo(p.created_at) }}</span>
         </div>
       </div>
     </div>
     <Pagination :page="page" :total="total" :page-size="pageSize" @change="onPage" />
   </div>
 </template>
+
+<style scoped>
+.badge-pinned {
+  background: #ffe9d6;
+  color: #d2691e;
+}
+</style>

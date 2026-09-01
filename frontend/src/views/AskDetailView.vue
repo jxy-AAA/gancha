@@ -26,6 +26,13 @@ const error = ref('')
 const loading = ref(true)
 const editingAnswer = ref(null)
 const editBody = ref('')
+const answerEditor = ref(null)
+
+function goWriteAnswer() {
+  if (!auth.isLoggedIn) return router.push('/login?redirect=' + route.path)
+  document.getElementById('answer-box')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  setTimeout(() => answerEditor.value?.focus(), 350)
+}
 
 async function load() {
   loading.value = true
@@ -217,12 +224,14 @@ onMounted(() => {
         </span>
       </div>
       <div class="actions-row">
+        <button class="primary-btn" style="padding: 7px 16px" @click="goWriteAnswer">写回答</button>
         <button class="vote-btn" :class="{ active: myVote }" @click="toggleVote('question', q.id)">
           ▲ 赞同 {{ q.score }}
         </button>
         <button class="ghost-btn" @click="toggleBookmark">{{ bookmarked ? '已收藏 ★' : '收藏 ☆' }}</button>
         <button class="ghost-btn" @click="toggleFollow">{{ following ? '已关注 ✓' : '关注问题' }}</button>
-        <button v-if="q.status !== 'closed'" class="ghost-btn" @click="closeQuestion">关闭问题</button>
+        <button v-if="q.status !== 'closed' && auth.user && (auth.user.id === q.user_id || auth.isAdmin)"
+          class="ghost-btn" @click="closeQuestion">关闭问题</button>
         <button v-if="auth.user && (auth.user.id === q.user_id || auth.isAdmin)" class="ghost-danger" @click="deleteQuestion">
           删除问题
         </button>
@@ -259,9 +268,9 @@ onMounted(() => {
             @click="deleteAnswer(a)">删除</button>
         </div>
       </div>
-      <div v-if="auth.isLoggedIn" class="answer-box">
+      <div v-if="auth.isLoggedIn" id="answer-box" class="answer-box">
         <h3 style="font-size: 15px; margin-bottom: 10px">写下你的回答</h3>
-        <Editor v-model="answerBody" :rows="5" :maxlength="12000" placeholder="说明推导过程、适用条件、依据或操作步骤" />
+        <Editor ref="answerEditor" v-model="answerBody" :rows="5" :maxlength="12000" placeholder="说明推导过程、适用条件、依据或操作步骤" />
         <label style="font-size: 13px; font-weight: 600; margin-top: 12px; display: block">回答附件</label>
         <FileUpload v-model="answerFiles" />
         <p class="form-hint">{{ error }}</p>

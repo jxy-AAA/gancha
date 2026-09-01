@@ -19,6 +19,13 @@ const error = ref('')
 const loading = ref(true)
 const editingReply = ref(null)
 const editBody = ref('')
+const replyEditor = ref(null)
+
+function goReply() {
+  if (!auth.isLoggedIn) return router.push('/login?redirect=' + route.path)
+  document.getElementById('reply-box')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  setTimeout(() => replyEditor.value?.focus(), 350)
+}
 
 async function load() {
   loading.value = true
@@ -95,6 +102,31 @@ async function deletePost() {
   }
 }
 
+async function togglePin() {
+  try {
+    await api.pinForumPost(id.value, { pinned: !post.value.is_pinned })
+    post.value.is_pinned = !post.value.is_pinned
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+async function toggleSolved() {
+  const cur = post.value.is_solved
+  try {
+    await api.updateForumPost(id.value, {
+      board_id: post.value.board_id,
+      title: post.value.title,
+      body: post.value.body,
+      tags: post.value.tags || '',
+      is_solved: !cur,
+    })
+    post.value.is_solved = !cur
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
 onMounted(async () => {
   load()
   if (auth.isLoggedIn) {
@@ -112,7 +144,12 @@ onMounted(async () => {
   <div v-else class="page page-narrow">
     <div class="detail-card">
       <span class="badge badge-teal">{{ post.board_name }}</span>
+      <span v-if="post.is_pinned" class="badge badge-pinned">置顶</span>
+      <span v-if="post.is_solved" class="badge badge-green">已解决</span>
       <h2>{{ post.title }}</h2>
+      <div v-if="post.tags" class="meta" style="margin-top: 8px">
+        <span v-for="t in post.tags.split(',').filter(Boolean)" :key="t" class="tag">{{ t.trim() }}</span>
+      </div>
       <MarkdownContent :source="post.body" />
       <div class="meta" style="margin-top: 14px">
         <span style="margin-left: auto">
@@ -121,8 +158,15 @@ onMounted(async () => {
         </span>
       </div>
       <div class="actions-row">
+        <button class="primary-btn" style="padding: 7px 16px" @click="goReply">参与回复</button>
         <button class="vote-btn" :class="{ active: myVote }" @click="toggleVote('forum_post', post.id)">
           ▲ 赞 {{ post.score }}
+        </button>
+        <button v-if="auth.isAdmin" class="ghost-btn" @click="togglePin">
+          {{ post.is_pinned ? '取消置顶' : '置顶' }}
+        </button>
+        <button v-if="auth.user && (auth.user.id === post.user_id || auth.isAdmin)" class="ghost-btn" @click="toggleSolved">
+          {{ post.is_solved ? '标记未解决' : '标记已解决' }}
         </button>
         <button v-if="auth.user && (auth.user.id === post.user_id || auth.isAdmin)" class="ghost-danger"
           @click="deletePost">删除帖子</button>
@@ -156,9 +200,9 @@ onMounted(async () => {
             @click="deleteReply(r)">删除</button>
         </div>
       </div>
-      <div v-if="auth.isLoggedIn" class="answer-box">
+      <div v-if="auth.isLoggedIn" id="reply-box" class="answer-box">
         <h3 style="font-size: 15px; margin-bottom: 10px">回复帖子</h3>
-        <Editor v-model="replyBody" :rows="4" :maxlength="12000" />
+        <Editor ref="replyEditor" v-model="replyBody" :rows="4" :maxlength="12000" />
         <p class="form-hint">{{ error }}</p>
         <div class="form-footer">
           <button class="primary-btn" @click="submitReply">发表回复</button>
@@ -170,3 +214,10 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.badge-pinned {
+  background: #ffe9d6;
+  color: #d2691e;
+}
+</style>

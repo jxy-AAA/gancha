@@ -79,8 +79,8 @@ onMounted(load)
     <div v-if="loading" class="empty-note">加载中…</div>
     <div v-else-if="!items.length" class="empty-note">知识库还是空的，来投递第一篇文章吧</div>
     <div v-else class="feed">
-      <div v-for="a in items" :key="a.id" class="card">
-        <h3><router-link :to="`/knowledge/${a.id}`">{{ a.title }}</router-link></h3>
+      <div v-for="a in items" :key="a.id" class="card clickable-card" @click="router.push(`/knowledge/${a.id}`)">
+        <h3>{{ a.title }}</h3>
         <p class="excerpt">{{ a.summary || a.body.replace(/[#*`$>\[\]|]/g, '').slice(0, 160) }}</p>
         <div class="meta">
           <span class="badge badge-teal">知识文章</span>
@@ -88,10 +88,10 @@ onMounted(load)
             <span v-for="t in a.tags.split(',').filter(Boolean).slice(0, 4)" :key="t" class="tag">{{ t.trim() }}</span>
           </span>
           <button class="stat-btn" :class="{ active: votedMap[a.id] }" :disabled="busyId === a.id"
-            @click="toggleVote(a)">
+            @click.stop="toggleVote(a)">
             ▲ {{ a.score ?? 0 }}
           </button>
-          <button class="stat-btn" @click="goComments(a)">评论 {{ a.comment_count ?? 0 }}</button>
+          <button class="stat-btn" @click.stop="goComments(a)">评论 {{ a.comment_count ?? 0 }}</button>
           <span class="stat-btn">浏览 {{ a.views }}</span>
           <span style="margin-left: auto">
             <img v-if="a.author_avatar" :src="a.author_avatar" class="avatar" alt="" />

@@ -102,14 +102,20 @@ func main() {
 		api.PUT("/forum/posts/:id", middleware.Auth(conn, cfg.JWTSecret), h.UpdateForumPost)
 		api.DELETE("/forum/posts/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteForumPost)
 		api.POST("/forum/posts/:id/view", h.RegisterForumPostView)
+		api.POST("/forum/posts/:id/pin", middleware.Auth(conn, cfg.JWTSecret), h.PinForumPost)
 		api.POST("/forum/posts/:id/replies", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(10, time.Minute), h.CreateForumReply)
 		api.PUT("/forum/replies/:id", middleware.Auth(conn, cfg.JWTSecret), h.UpdateForumReply)
 		api.DELETE("/forum/replies/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteForumReply)
 
-		// 就业共享表格（2027 届公司招聘信息）
+		// 就业共享表格（2027 届公司招聘信息，社区协作数据库）
 		api.GET("/jobs", h.ListJobs)
 		api.POST("/jobs", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(20, time.Minute), h.CreateJob)
 		api.PUT("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(30, time.Minute), h.UpdateJob)
+		api.POST("/jobs/:id/flag", middleware.Auth(conn, cfg.JWTSecret), h.FlagJob)
+		api.POST("/jobs/:id/restore", middleware.Auth(conn, cfg.JWTSecret), h.RestoreJob)
+		api.POST("/jobs/:id/revert", middleware.Auth(conn, cfg.JWTSecret), h.RevertJobVersion)
+		api.POST("/jobs/:id/pin", middleware.Auth(conn, cfg.JWTSecret), h.PinJob)
+		api.GET("/jobs/:id/versions", h.ListJobVersions)
 		api.DELETE("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteJob)
 		api.GET("/jobs/:id/reviews", h.ListJobReviews)
 		api.POST("/jobs/:id/reviews", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(10, time.Minute), h.CreateJobReview)

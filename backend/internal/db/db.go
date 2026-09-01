@@ -57,6 +57,9 @@ func Open(dsn string) (*sql.DB, error) {
 		"current_status": "VARCHAR(200) NOT NULL DEFAULT ''",
 		"links":         "VARCHAR(1000) NOT NULL DEFAULT ''",
 		"verified_at":   "VARCHAR(10) NOT NULL DEFAULT ''",
+		"status":        "VARCHAR(20) NOT NULL DEFAULT 'active'",
+		"is_pinned":     "TINYINT(1) NOT NULL DEFAULT 0",
+		"edit_reason":   "VARCHAR(200) NOT NULL DEFAULT ''",
 	} {
 		var n int
 		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
@@ -67,8 +70,24 @@ func Open(dsn string) (*sql.DB, error) {
 			}
 		}
 	}
-	// 旧版就业表字段（position/status/url/note）已废弃：NOT NULL 无默认值会阻塞新插入，幂等删除
-	for _, col := range []string{"position", "status", "url", "note"} {
+	// 现有环境的 forum_posts 升级为“排序/置顶/解决/标签”增强列（幂等）
+	for name, ddl := range map[string]string{
+		"is_pinned": "TINYINT(1) NOT NULL DEFAULT 0",
+		"is_solved": "TINYINT(1) NOT NULL DEFAULT 0",
+		"tags":      "VARCHAR(250) NOT NULL DEFAULT ''",
+	} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='forum_posts' AND COLUMN_NAME=?`, name).Scan(&n)
+		if n == 0 {
+			if _, err := conn.Exec(`ALTER TABLE forum_posts ADD COLUMN ` + name + ` ` + ddl); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// 旧版就业表字段（position/url/note）已废弃：NOT NULL 无默认值会阻塞新插入，幂等删除。
+	// 注意：status 现在被复用为“失效/重复”标记列，不能删除。
+	for _, col := range []string{"position", "url", "note"} {
 		var n int
 		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
 			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entries' AND COLUMN_NAME=?`, col).Scan(&n)

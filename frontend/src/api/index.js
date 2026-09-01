@@ -66,14 +66,20 @@ export default {
   updateForumPost: (id, d) => api.put(`/forum/posts/${id}`, d),
   deleteForumPost: (id) => api.delete(`/forum/posts/${id}`),
   viewForumPost: (id) => api.post(`/forum/posts/${id}/view`),
+  pinForumPost: (id, d) => api.post(`/forum/posts/${id}/pin`, d),
   createForumReply: (id, d) => api.post(`/forum/posts/${id}/replies`, d),
   updateForumReply: (id, d) => api.put(`/forum/replies/${id}`, d),
   deleteForumReply: (id) => api.delete(`/forum/replies/${id}`),
 
-  // 就业共享表格（2027 届公司招聘信息）
-  jobs: () => api.get('/jobs'),
+  // 就业共享表格（2027 届公司招聘信息，社区协作数据库）
+  jobs: (params) => api.get('/jobs', { params }),
   createJob: (d) => api.post('/jobs', d),
   updateJob: (id, d) => api.put(`/jobs/${id}`, d),
+  flagJob: (id, d) => api.post(`/jobs/${id}/flag`, d),
+  restoreJob: (id) => api.post(`/jobs/${id}/restore`),
+  revertJob: (id, d) => api.post(`/jobs/${id}/revert`, d),
+  pinJob: (id, d) => api.post(`/jobs/${id}/pin`, d),
+  jobVersions: (id) => api.get(`/jobs/${id}/versions`),
   deleteJob: (id) => api.delete(`/jobs/${id}`),
   jobReviews: (id) => api.get(`/jobs/${id}/reviews`),
   createJobReview: (id, d) => api.post(`/jobs/${id}/reviews`, d),

@@ -10,9 +10,17 @@ const page = ref(1)
 const pageSize = 10
 const categories = ref([])
 const categoryId = ref(0)
+const statusFilter = ref('')
 const search = ref('')
 const sort = ref('newest')
 const loading = ref(false)
+
+const statusOptions = [
+  { value: '', label: '全部状态' },
+  { value: 'open', label: '待解决' },
+  { value: 'solved', label: '已解决' },
+  { value: 'closed', label: '已关闭' },
+]
 
 async function load() {
   loading.value = true
@@ -21,6 +29,7 @@ async function load() {
       page: page.value,
       page_size: pageSize,
       category: categoryId.value || undefined,
+      status: statusFilter.value || undefined,
       search: search.value || undefined,
       sort: sort.value,
     })
@@ -44,7 +53,7 @@ function onPage(p) {
   page.value = p
   load()
 }
-watch(sort, () => {
+watch([sort, statusFilter], () => {
   page.value = 1
   load()
 })
@@ -72,8 +81,12 @@ onMounted(async () => {
           @keyup.enter="onSearch" />
         <button class="filter-btn" @click="onSearch">搜索</button>
         <select v-model="sort" class="filter-btn">
-          <option value="newest">最新</option>
+          <option value="newest">最新发布</option>
+          <option value="updated">最后回复</option>
           <option value="popular">最热</option>
+        </select>
+        <select v-model="statusFilter" class="filter-btn">
+          <option v-for="s in statusOptions" :key="s.value" :value="s.value">{{ s.label }}</option>
         </select>
         <router-link class="primary-btn" to="/ask/new">+ 发布投稿</router-link>
       </div>

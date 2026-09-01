@@ -43,11 +43,12 @@ func (s *Server) ListBoards(c *gin.Context) {
 type listForumReq struct {
 	BoardID  int64  `form:"board_id"`
 	Search   string `form:"search"`
+	Sort     string `form:"sort"` // latest | updated | popular（默认 latest）
 	Page     int    `form:"page"`
 	PageSize int    `form:"page_size"`
 }
 
-// ListForumPosts 帖子列表：板块筛选 + 分页。
+// ListForumPosts 帖子列表：板块筛选 + 关键词 + 排序 + 分页，置顶优先。
 func (s *Server) ListForumPosts(c *gin.Context) {
 	var q listForumReq
 	_ = c.ShouldBindQuery(&q)
@@ -64,16 +65,27 @@ func (s *Server) ListForumPosts(c *gin.Context) {
 		args = append(args, like, like)
 	}
 	whereSQL := strings.Join(where, " AND ")
+	order := "p.created_at DESC"
+	switch q.Sort {
+	case "updated":
+		order = "COALESCE((SELECT MAX(r.created_at) FROM forum_replies r WHERE r.post_id=p.id), p.created_at) DESC, p.id DESC"
+	case "popular":
+		order = "p.views DESC, p.id DESC"
+	}
 	var total int
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM forum_posts p WHERE `+whereSQL, args...).Scan(&total)
 	rows, err := s.DB.Query(`SELECT p.id, p.board_id, b.name, p.title, p.body, p.views, p.created_at, p.edited_at,
+			p.is_pinned, p.is_solved, p.tags,
 			CASE WHEN p.is_anonymous=1 THEN '匿名' ELSE u.username END,
 			CASE WHEN p.is_anonymous=1 THEN '' ELSE u.avatar END,
-			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id) AS reply_count
+			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id) AS reply_count,
+			(SELECT MAX(r.created_at) FROM forum_replies r WHERE r.post_id=p.id) AS last_reply_at,
+			(SELECT u2.username FROM forum_replies r JOIN users u2 ON u2.id=r.user_id
+				WHERE r.post_id=p.id ORDER BY r.created_at DESC LIMIT 1) AS last_reply_author
 		FROM forum_posts p
 		JOIN users u ON u.id=p.user_id
 		LEFT JOIN forum_boards b ON b.id=p.board_id
-		WHERE `+whereSQL+` ORDER BY p.created_at DESC LIMIT ? OFFSET ?`, append(args, size, (page-1)*size)...)
+		WHERE `+whereSQL+` ORDER BY p.is_pinned DESC, `+order+` LIMIT ? OFFSET ?`, append(args, size, (page-1)*size)...)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -82,22 +94,30 @@ func (s *Server) ListForumPosts(c *gin.Context) {
 	items := make([]gin.H, 0, size)
 	for rows.Next() {
 		var (
-			id, bid  int64
-			bName    sql.NullString
-			title    string
-			body     string
-			views    int
-			created  time.Time
-			edited   sql.NullTime
-			author   string
-			avatar   string
-			replyCnt int
+			id, bid       int64
+			bName         sql.NullString
+			title         string
+			body          string
+			views         int
+			created       time.Time
+			edited        sql.NullTime
+			pinned        bool
+			solved        bool
+			tags          string
+			author        string
+			avatar        string
+			replyCnt      int
+			lastReplyAt   sql.NullTime
+			lastReplyAuth sql.NullString
 		)
 		if rows.Scan(&id, &bid, &bName, &title, &body, &views, &created, &edited,
-			&author, &avatar, &replyCnt) == nil {
+			&pinned, &solved, &tags, &author, &avatar, &replyCnt,
+			&lastReplyAt, &lastReplyAuth) == nil {
 			items = append(items, gin.H{
 				"id": id, "board_id": bid, "board_name": bName.String, "title": title, "body": body,
 				"views": views, "author": author, "author_avatar": avatar, "reply_count": replyCnt,
+				"is_pinned": pinned, "is_solved": solved, "tags": tags,
+				"last_reply_at": lastReplyAt.Time, "last_reply_author": lastReplyAuth.String,
 				"created_at": created, "edited_at": edited.Time,
 			})
 		}
@@ -132,16 +152,22 @@ func (s *Server) GetForumPost(c *gin.Context) {
 		score        int
 		userID       int64
 		isAnonymous  bool
+		isPinned     bool
+		isSolved     bool
+		tags         string
+		lastReplyAt  sql.NullTime
 	)
 	err = s.DB.QueryRow(`SELECT p.board_id, b.name, p.title, p.body, p.views, u.username, u.avatar,
-			p.created_at, p.edited_at, p.user_id, p.is_anonymous,
+			p.created_at, p.edited_at, p.user_id, p.is_anonymous, p.is_pinned, p.is_solved, p.tags,
 			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id),
-			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_post' AND v.target_id=p.id)
+			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_post' AND v.target_id=p.id),
+			(SELECT MAX(r.created_at) FROM forum_replies r WHERE r.post_id=p.id)
 		FROM forum_posts p
 		JOIN users u ON u.id=p.user_id
 		LEFT JOIN forum_boards b ON b.id=p.board_id
 		WHERE p.id=?`, id).
-		Scan(&bid, &bName, &title, &body, &views, &author, &avatar, &created, &edited, &userID, &isAnonymous, &replyCnt, &score)
+		Scan(&bid, &bName, &title, &body, &views, &author, &avatar, &created, &edited, &userID,
+			&isAnonymous, &isPinned, &isSolved, &tags, &replyCnt, &score, &lastReplyAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
 		return
@@ -161,6 +187,8 @@ func (s *Server) GetForumPost(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"id": id, "board_id": bid, "board_name": bName.String, "title": title, "body": body,
 		"views": views, "author": author, "author_avatar": avatar, "user_id": userID,
+		"is_pinned": isPinned, "is_solved": isSolved, "tags": tags,
+		"last_reply_at": lastReplyAt.Time,
 		"created_at": created, "edited_at": edited.Time, "reply_count": replyCnt, "score": score,
 		"replies": replies,
 	})
@@ -197,7 +225,9 @@ type forumPostReq struct {
 	BoardID     int64  `json:"board_id"`
 	Title       string `json:"title"`
 	Body        string `json:"body"`
+	Tags        string `json:"tags"`
 	IsAnonymous bool   `json:"is_anonymous"`
+	IsSolved    bool   `json:"is_solved"`
 }
 
 // CreateForumPost 发帖。
@@ -210,6 +240,7 @@ func (s *Server) CreateForumPost(c *gin.Context) {
 	}
 	req.Title = strings.TrimSpace(req.Title)
 	req.Body = strings.TrimSpace(req.Body)
+	req.Tags = strings.TrimSpace(req.Tags)
 	if req.Title == "" || len([]rune(req.Title)) > 160 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "标题不能为空且不超过 160 字"})
 		return
@@ -218,14 +249,18 @@ func (s *Server) CreateForumPost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "内容不能为空且不超过 20000 字"})
 		return
 	}
+	if len([]rune(req.Tags)) > 250 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标签不超过 250 字"})
+		return
+	}
 	var exists int
 	_ = s.DB.QueryRow(`SELECT COUNT(*) FROM forum_boards WHERE id=?`, req.BoardID).Scan(&exists)
 	if exists == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "板块不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body, is_anonymous) VALUES (?, ?, ?, ?, ?)`,
-		req.BoardID, u.ID, req.Title, req.Body, req.IsAnonymous)
+	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body, tags, is_anonymous) VALUES (?, ?, ?, ?, ?, ?)`,
+		req.BoardID, u.ID, req.Title, req.Body, req.Tags, req.IsAnonymous)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -249,8 +284,13 @@ func (s *Server) UpdateForumPost(c *gin.Context) {
 	}
 	req.Title = strings.TrimSpace(req.Title)
 	req.Body = strings.TrimSpace(req.Body)
+	req.Tags = strings.TrimSpace(req.Tags)
 	if req.Title == "" || len([]rune(req.Title)) > 160 || req.Body == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "标题与内容不能为空"})
+		return
+	}
+	if len([]rune(req.Tags)) > 250 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "标签不超过 250 字"})
 		return
 	}
 	var owner int64
@@ -262,8 +302,40 @@ func (s *Server) UpdateForumPost(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权编辑"})
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE forum_posts SET board_id=?, title=?, body=?, edited_at=? WHERE id=?`,
-		req.BoardID, req.Title, req.Body, time.Now(), id)
+	_, _ = s.DB.Exec(`UPDATE forum_posts SET board_id=?, title=?, body=?, tags=?, is_solved=?, edited_at=? WHERE id=?`,
+		req.BoardID, req.Title, req.Body, req.Tags, req.IsSolved, time.Now(), id)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// PinForumPost 管理员置顶 / 取消置顶帖子。
+func (s *Server) PinForumPost(c *gin.Context) {
+	u, _ := middleware.CurrentUser(c)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	if u.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅管理员可以置顶"})
+		return
+	}
+	var req struct {
+		Pinned bool `json:"pinned"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+	res, err := s.DB.Exec(`UPDATE forum_posts SET is_pinned=? WHERE id=?`, req.Pinned, id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
+		return
+	}
+	s.audit(c, "pin_forum_post", "forum_post", &id, "置顶="+strconv.FormatBool(req.Pinned))
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

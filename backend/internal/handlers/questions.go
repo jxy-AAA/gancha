@@ -49,8 +49,12 @@ func (s *Server) ListQuestions(c *gin.Context) {
 	}
 	whereSQL := strings.Join(where, " AND ")
 	order := "q.created_at DESC"
-	if q.Sort == "popular" {
+	switch q.Sort {
+	case "popular":
 		order = "q.views DESC, q.id DESC"
+	case "updated":
+		// 按最后回复时间排序（无回复时退回发布时间）
+		order = "COALESCE((SELECT MAX(a.created_at) FROM answers a WHERE a.question_id=q.id), q.created_at) DESC, q.id DESC"
 	}
 	var total int
 	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM questions q WHERE `+whereSQL, args...).Scan(&total); err != nil {

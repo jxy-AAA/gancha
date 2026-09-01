@@ -10,6 +10,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:modelValue'])
 const mode = ref('edit')
+const textarea = ref(null)
+function focus() {
+  if (mode.value !== 'edit') mode.value = 'edit'
+  requestAnimationFrame(() => textarea.value?.focus())
+}
+defineExpose({ focus })
 
 function wrap(prefix, suffix = prefix) {
   const el = textarea.value
@@ -24,7 +30,6 @@ function wrap(prefix, suffix = prefix) {
     el.setSelectionRange(start + prefix.length, start + prefix.length + sel.length)
   })
 }
-const textarea = ref(null)
 </script>
 
 <template>
