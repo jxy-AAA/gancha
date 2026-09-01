@@ -154,14 +154,14 @@ func (s *Server) CreateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	// 填了内推码就自动置顶（蓝色效果）
+	// 填了内推码就自动置顶（蓝色效果，pin_manual=0 表示由内推码驱动）
 	pinned := 0
 	if req.ReferralCode != "" {
 		pinned = 1
 	}
 	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
-			city, apply_link, referral_code, verified_at, status, is_pinned, edit_reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`,
+			city, apply_link, referral_code, verified_at, status, is_pinned, pin_manual, edit_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?)`,
 		u.ID, u.ID, req.Company, req.Industry,
 		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, pinned, req.EditReason)
 	if err != nil {
@@ -203,11 +203,12 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		oldCompany, oldIndustry string
 		oldCity, oldApply       string
 		oldReferral, oldVerified string
+		oldPinManual            bool
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, pin_manual FROM job_entries WHERE id=?`, id).
 		Scan(&oldCompany, &oldIndustry,
-			&oldCity, &oldApply, &oldReferral, &oldVerified)
+			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldPinManual)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -216,14 +217,14 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
-	// 置顶状态完全由内推码决定：有码即置顶（蓝色效果），删码即取消置顶
-	pinned := req.ReferralCode != ""
+	// 置顶规则：有内推码自动置顶（删码即取消）；管理员手动置顶（pin_manual=1）保留，不被用户编辑清除
+	pinned := req.ReferralCode != "" || oldPinManual
 	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
-			referral_code=?, verified_at=?, status='active', is_pinned=?,
+			referral_code=?, verified_at=?, status='active', is_pinned=?, pin_manual=?,
 			last_editor_id=?, edit_reason=?, updated_at=?
 		WHERE id=?`,
 		req.Company, req.Industry, req.City, req.ApplyLink,
-		req.ReferralCode, req.VerifiedAt, pinned,
+		req.ReferralCode, req.VerifiedAt, pinned, oldPinManual,
 		u.ID, req.EditReason, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -448,7 +449,11 @@ func (s *Server) PinJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
-	res, err := s.DB.Exec(`UPDATE job_entries SET is_pinned=? WHERE id=?`, req.Pinned, id)
+	pinManual := 0
+	if req.Pinned {
+		pinManual = 1
+	}
+	res, err := s.DB.Exec(`UPDATE job_entries SET is_pinned=?, pin_manual=? WHERE id=?`, req.Pinned, pinManual, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return

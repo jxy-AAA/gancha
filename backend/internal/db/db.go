@@ -70,6 +70,7 @@ func Open(dsn string) (*sql.DB, error) {
 		"verified_at":   "VARCHAR(10) NOT NULL DEFAULT ''",
 		"status":        "VARCHAR(20) NOT NULL DEFAULT 'active'",
 		"is_pinned":     "TINYINT(1) NOT NULL DEFAULT 0",
+		"pin_manual":    "TINYINT(1) NOT NULL DEFAULT 0",
 		"edit_reason":   "VARCHAR(200) NOT NULL DEFAULT ''",
 	} {
 		var n int
