@@ -203,12 +203,11 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		oldCompany, oldIndustry string
 		oldCity, oldApply       string
 		oldReferral, oldVerified string
-		oldPinned               bool
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at, is_pinned FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at FROM job_entries WHERE id=?`, id).
 		Scan(&oldCompany, &oldIndustry,
-			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldPinned)
+			&oldCity, &oldApply, &oldReferral, &oldVerified)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -217,8 +216,8 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
-	// 填了内推码就自动置顶（蓝色效果）；没填则保持原置顶状态不变
-	pinned := oldPinned || req.ReferralCode != ""
+	// 置顶状态完全由内推码决定：有码即置顶（蓝色效果），删码即取消置顶
+	pinned := req.ReferralCode != ""
 	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
 			referral_code=?, verified_at=?, status='active', is_pinned=?,
 			last_editor_id=?, edit_reason=?, updated_at=?
