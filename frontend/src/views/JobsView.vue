@@ -19,6 +19,8 @@ const cityKeyword = ref('')
 const industryKeyword = ref('')
 // 校招状态筛选（客户端）：默认全部，只看已开启
 const campusFilter = ref('all') // all | 已开启
+// 我的投递状态筛选（客户端）：全部 | 已投递 | 未投递
+const appliedFilter = ref('all') // all | applied | not
 
 // 每张卡片的操作面板：panel.id + panel.mode(edit/flag/versions/reviews)
 const panel = ref({ id: 0, mode: '' })
@@ -51,6 +53,8 @@ const filteredItems = computed(() => {
   let list = items.value
   if (statusFilter.value !== 'all') list = list.filter((it) => it.status === statusFilter.value)
   if (campusFilter.value !== 'all') list = list.filter((it) => it.campus_status === campusFilter.value)
+  if (appliedFilter.value === 'applied') list = list.filter((it) => it.my_applied)
+  else if (appliedFilter.value === 'not') list = list.filter((it) => !it.my_applied)
   return list
 })
 
@@ -64,6 +68,12 @@ const campusCounts = computed(() => {
   let open = 0
   for (const it of items.value) if (it.campus_status === '已开启') open += 1
   return { all: items.value.length, open }
+})
+
+const myCounts = computed(() => {
+  let applied = 0
+  for (const it of items.value) if (it.my_applied) applied += 1
+  return { all: items.value.length, applied, not: items.value.length - applied }
 })
 
 const linkList = (links) => String(links || '').split(/\n+/).map((s) => s.trim()).filter(Boolean)
@@ -377,6 +387,20 @@ onMounted(load)
       </button>
       <button class="filter-btn" :class="{ active: campusFilter === '已开启' }" @click="campusFilter = '已开启'">
         只看已开启 <b>{{ campusCounts.open }}</b>
+      </button>
+    </div>
+
+    <!-- 我的投递状态筛选（登录后可见） -->
+    <div v-if="auth.isLoggedIn" class="job-filters job-cs-filter">
+      <span class="job-cs-label">我的状态</span>
+      <button class="filter-btn" :class="{ active: appliedFilter === 'all' }" @click="appliedFilter = 'all'">
+        全部 <b>{{ myCounts.all }}</b>
+      </button>
+      <button class="filter-btn" :class="{ active: appliedFilter === 'applied' }" @click="appliedFilter = 'applied'">
+        已投递 <b>{{ myCounts.applied }}</b>
+      </button>
+      <button class="filter-btn" :class="{ active: appliedFilter === 'not' }" @click="appliedFilter = 'not'">
+        未投递 <b>{{ myCounts.not }}</b>
       </button>
     </div>
 
