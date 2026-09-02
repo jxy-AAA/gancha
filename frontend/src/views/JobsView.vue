@@ -401,9 +401,6 @@ onMounted(load)
         <div class="job-card-head">
           <div class="job-card-title">
             <span v-if="it.is_pinned" class="badge badge-pinned">置顶</span>
-            <span :class="it.campus_status === '已开启' ? 'badge badge-cs-open' : 'badge badge-cs-pending'">
-              {{ it.campus_status === '已开启' ? '已开启' : '待核验' }}
-            </span>
             <span :class="['badge', statusClass[it.status]]">{{ statusLabel[it.status] }}</span>
             <h3>{{ it.company }}</h3>
           </div>
@@ -418,6 +415,7 @@ onMounted(load)
           <div v-if="it.industry" class="job-row"><b>方向</b><span>{{ it.industry }}</span></div>
           <div v-if="it.city" class="job-row"><b>地点</b><span>{{ it.city }}</span></div>
           <div v-if="it.referral_code" class="job-row"><b>内推码</b><span>{{ it.referral_code }}</span></div>
+          <div class="job-row"><b>校招状态</b><span :class="it.campus_status === '已开启' ? 'text-cs-open' : 'text-cs-pending'">{{ it.campus_status === '已开启' ? '已开启' : '待核验' }}</span></div>
           <div class="job-row"><b>投递链接</b>
             <span>
               <template v-if="linkList(it.apply_link).length">
@@ -631,12 +629,11 @@ onMounted(load)
   background: #ffe9d6;
   color: #d2691e;
 }
-.badge-cs-open {
-  background: #e4f4ea;
+.text-cs-open {
   color: #1e7e43;
+  font-weight: 500;
 }
-.badge-cs-pending {
-  background: #f0f2f3;
+.text-cs-pending {
   color: #6b7478;
 }
 .job-card-rows {
