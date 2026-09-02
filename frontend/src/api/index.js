@@ -79,6 +79,7 @@ export default {
   restoreJob: (id) => api.post(`/jobs/${id}/restore`),
   revertJob: (id, d) => api.post(`/jobs/${id}/revert`, d),
   pinJob: (id, d) => api.post(`/jobs/${id}/pin`, d),
+  moveJob: (id, d) => api.post(`/jobs/${id}/move`, d),
   jobVersions: (id) => api.get(`/jobs/${id}/versions`),
   deleteJob: (id) => api.delete(`/jobs/${id}`),
   jobReviews: (id) => api.get(`/jobs/${id}/reviews`),

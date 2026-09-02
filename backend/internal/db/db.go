@@ -72,6 +72,7 @@ func Open(dsn string) (*sql.DB, error) {
 		"status":        "VARCHAR(20) NOT NULL DEFAULT 'active'",
 		"is_pinned":     "TINYINT(1) NOT NULL DEFAULT 0",
 		"pin_manual":    "TINYINT(1) NOT NULL DEFAULT 0",
+		"pin_order":     "INT NOT NULL DEFAULT 0",
 		"edit_reason":   "VARCHAR(200) NOT NULL DEFAULT ''",
 	} {
 		var n int
@@ -160,6 +161,41 @@ func Open(dsn string) (*sql.DB, error) {
 			if _, err := conn.Exec(`ALTER TABLE job_entries DROP COLUMN ` + col); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// 置顶条目序号初始化（幂等：仅当存在置顶但 pin_order=0 的行时，按当前展示序整体重排 1..n）
+	var needsPinOrder int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM job_entries WHERE is_pinned=1 AND pin_order=0`).Scan(&needsPinOrder)
+	if needsPinOrder > 0 {
+		tx, err := conn.Begin()
+		if err != nil {
+			return nil, err
+		}
+		rows, err := tx.Query(`SELECT id FROM job_entries WHERE is_pinned=1
+			ORDER BY pin_order ASC, created_at DESC, id DESC`)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		ids := make([]int64, 0)
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				tx.Rollback()
+				return nil, err
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		for i, id := range ids {
+			if _, err := tx.Exec(`UPDATE job_entries SET pin_order=? WHERE id=?`, i+1, id); err != nil {
+				tx.Rollback()
+				return nil, err
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
 		}
 	}
 	// 旧版 city 为 VARCHAR(50)，新结构上限 100 字，幂等加宽

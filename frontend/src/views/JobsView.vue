@@ -209,6 +209,22 @@ async function togglePin(it) {
   }
 }
 
+async function movePin(it, dir) {
+  try {
+    await api.moveJob(it.id, { direction: dir })
+    await load()
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+// 后端返回顺序即展示序：置顶区首条不可再上移、末条不可再下移
+const pinnedItems = computed(() => items.value.filter((i) => i.is_pinned))
+const isPinnedEdge = (it, dir) => {
+  if (!pinnedItems.value.length) return true
+  return dir === 'up' ? it.id === pinnedItems.value[0].id : it.id === pinnedItems.value[pinnedItems.value.length - 1].id
+}
+
 // ---- 删除（管理员）----
 async function remove(it) {
   if (!window.confirm(`确认永久删除「${it.company}」及全部版本历史？此操作不可恢复`)) return
@@ -405,6 +421,10 @@ onMounted(load)
             <h3>{{ it.company }}</h3>
           </div>
           <div class="job-card-actions">
+            <template v-if="auth.isAdmin && it.is_pinned">
+              <button class="ghost-btn" :disabled="isPinnedEdge(it, 'up')" title="置顶区上移" @click="movePin(it, 'up')">↑ 上移</button>
+              <button class="ghost-btn" :disabled="isPinnedEdge(it, 'down')" title="置顶区下移" @click="movePin(it, 'down')">↓ 下移</button>
+            </template>
             <button v-if="auth.isAdmin" class="ghost-btn" @click="togglePin(it)">{{ it.is_pinned ? '取消置顶' : '置顶' }}</button>
             <button v-if="auth.isAdmin" class="ghost-danger" @click="remove(it)">删除</button>
           </div>
@@ -635,6 +655,13 @@ onMounted(load)
 }
 .text-cs-pending {
   color: #6b7478;
+}
+.ghost-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.ghost-btn:disabled:hover {
+  color: var(--ink);
 }
 .job-card-rows {
   display: grid;

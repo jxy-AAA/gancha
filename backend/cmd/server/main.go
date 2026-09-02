@@ -115,6 +115,7 @@ func main() {
 		api.POST("/jobs/:id/restore", middleware.Auth(conn, cfg.JWTSecret), h.RestoreJob)
 		api.POST("/jobs/:id/revert", middleware.Auth(conn, cfg.JWTSecret), h.RevertJobVersion)
 		api.POST("/jobs/:id/pin", middleware.Auth(conn, cfg.JWTSecret), h.PinJob)
+		api.POST("/jobs/:id/move", middleware.Auth(conn, cfg.JWTSecret), h.MoveJob)
 		api.GET("/jobs/:id/versions", h.ListJobVersions)
 		api.DELETE("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteJob)
 		api.GET("/jobs/:id/reviews", h.ListJobReviews)

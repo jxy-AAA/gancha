@@ -15,7 +15,7 @@ import (
 )
 
 // ListJobs 就业共享表格（2027 届公司招聘信息，社区协作数据库）。
-// 支持地点（city LIKE）、方向（industry LIKE）、状态筛选；置顶优先，新建在前。
+// 支持地点（city LIKE）、方向（industry LIKE）、状态筛选；置顶优先（按 pin_order 手动排序），其余新建在前。
 func (s *Server) ListJobs(c *gin.Context) {
 	where := []string{"1=1"}
 	args := []interface{}{}
@@ -46,7 +46,7 @@ func (s *Server) ListJobs(c *gin.Context) {
 		LEFT JOIN users u ON u.id=j.user_id
 		LEFT JOIN users le ON le.id=j.last_editor_id
 		WHERE `+whereSQL+`
-		ORDER BY j.is_pinned DESC, j.created_at DESC, j.id DESC`, args...)
+		ORDER BY j.is_pinned DESC, j.pin_order ASC, j.created_at DESC, j.id DESC`, args...)
 	if err != nil {
 		log.Printf("ListJobs query err: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -161,10 +161,15 @@ func (s *Server) CreateJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
 		return
 	}
-	// 填了内推码就自动置顶（蓝色效果，pin_manual=0 表示由内推码驱动）
+	// 填了内推码就自动置顶（蓝色效果，pin_manual=0 表示由内推码驱动），置顶序号排到最后
 	pinned := 0
+	pinOrder := 0
 	if req.ReferralCode != "" {
 		pinned = 1
+		if err := s.DB.QueryRow(`SELECT COALESCE(MAX(pin_order),0)+1 FROM job_entries`).Scan(&pinOrder); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+			return
+		}
 	}
 	// 校招状态仅管理员可指定（默认待核验，需核验后才可标已开启）
 	campus := "待核验"
@@ -172,10 +177,10 @@ func (s *Server) CreateJob(c *gin.Context) {
 		campus = req.CampusStatus
 	}
 	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
-			city, apply_link, referral_code, verified_at, campus_status, status, is_pinned, pin_manual, edit_reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?)`,
+			city, apply_link, referral_code, verified_at, campus_status, status, is_pinned, pin_manual, pin_order, edit_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?, ?)`,
 		u.ID, u.ID, req.Company, req.Industry,
-		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, campus, pinned, req.EditReason)
+		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, campus, pinned, pinOrder, req.EditReason)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -216,12 +221,16 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		oldCity, oldApply       string
 		oldReferral, oldVerified string
 		oldCampus               string
+		oldPinned               bool
+		oldPinOrder             int
 		oldPinManual            bool
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at, campus_status, pin_manual FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, campus_status,
+			is_pinned, pin_order, pin_manual FROM job_entries WHERE id=?`, id).
 		Scan(&oldCompany, &oldIndustry,
-			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldCampus, &oldPinManual)
+			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldCampus,
+			&oldPinned, &oldPinOrder, &oldPinManual)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -232,6 +241,16 @@ func (s *Server) UpdateJob(c *gin.Context) {
 	}
 	// 置顶规则：有内推码自动置顶（删码即取消）；管理员手动置顶（pin_manual=1）保留，不被用户编辑清除
 	pinned := req.ReferralCode != "" || oldPinManual
+	// 置顶序号：保持置顶时不动；新置顶（补内推码）排到置顶区最后；取消置顶时归零
+	pinOrder := oldPinOrder
+	if pinned && !oldPinned {
+		if err := s.DB.QueryRow(`SELECT COALESCE(MAX(pin_order),0)+1 FROM job_entries`).Scan(&pinOrder); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+			return
+		}
+	} else if !pinned {
+		pinOrder = 0
+	}
 	// 校招状态仅管理员可改，非管理员编辑时保持原值
 	newCampus := oldCampus
 	if u.Role == "admin" && req.CampusStatus != "" {
@@ -239,10 +258,10 @@ func (s *Server) UpdateJob(c *gin.Context) {
 	}
 	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
 			referral_code=?, verified_at=?, campus_status=?, status='active', is_pinned=?, pin_manual=?,
-			last_editor_id=?, edit_reason=?, updated_at=?
+			pin_order=?, last_editor_id=?, edit_reason=?, updated_at=?
 		WHERE id=?`,
 		req.Company, req.Industry, req.City, req.ApplyLink,
-		req.ReferralCode, req.VerifiedAt, newCampus, pinned, oldPinManual,
+		req.ReferralCode, req.VerifiedAt, newCampus, pinned, oldPinManual, pinOrder,
 		u.ID, req.EditReason, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -467,11 +486,34 @@ func (s *Server) PinJob(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
+	var oldPinned bool
+	var oldPinOrder int
+	err = s.DB.QueryRow(`SELECT is_pinned, pin_order FROM job_entries WHERE id=?`, id).
+		Scan(&oldPinned, &oldPinOrder)
+	if errors.Is(err, sql.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
 	pinManual := 0
+	pinOrder := 0
 	if req.Pinned {
 		pinManual = 1
+		if !oldPinned {
+			// 新置顶排到置顶区最后；已置顶则保持原序号
+			if err := s.DB.QueryRow(`SELECT COALESCE(MAX(pin_order),0)+1 FROM job_entries`).Scan(&pinOrder); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+				return
+			}
+		} else {
+			pinOrder = oldPinOrder
+		}
 	}
-	res, err := s.DB.Exec(`UPDATE job_entries SET is_pinned=?, pin_manual=? WHERE id=?`, req.Pinned, pinManual, id)
+	res, err := s.DB.Exec(`UPDATE job_entries SET is_pinned=?, pin_manual=?, pin_order=? WHERE id=?`,
+		req.Pinned, pinManual, pinOrder, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -481,6 +523,115 @@ func (s *Server) PinJob(c *gin.Context) {
 		return
 	}
 	s.audit(c, "pin_job", "job", &id, "置顶="+strconv.FormatBool(req.Pinned))
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// MoveJob 管理员在置顶区上移/下移记录（仅 active 置顶行参与相邻判断）。
+func (s *Server) MoveJob(c *gin.Context) {
+	u, _ := middleware.CurrentUser(c)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	if u.Role != "admin" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "仅管理员可以调整置顶顺序"})
+		return
+	}
+	var req struct {
+		Direction string `json:"direction"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+	if req.Direction != "up" && req.Direction != "down" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "方向仅支持 up / down"})
+		return
+	}
+	var pinned bool
+	err = s.DB.QueryRow(`SELECT is_pinned FROM job_entries WHERE id=?`, id).Scan(&pinned)
+	if errors.Is(err, sql.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	if !pinned {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该记录未置顶，无需移动"})
+		return
+	}
+	tx, err := s.DB.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	rows, err := tx.Query(`SELECT id FROM job_entries
+		WHERE is_pinned=1 AND status='active'
+		ORDER BY pin_order ASC, created_at DESC, id DESC`)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var pid int64
+		if err := rows.Scan(&pid); err != nil {
+			rows.Close()
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+			return
+		}
+		ids = append(ids, pid)
+	}
+	rows.Close()
+	idx := -1
+	for i, pid := range ids {
+		if pid == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, gin.H{"error": "该记录已失效或不在置顶区"})
+		return
+	}
+	if (req.Direction == "up" && idx == 0) || (req.Direction == "down" && idx == len(ids)-1) {
+		tx.Rollback()
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+		return
+	}
+	// 先按当前展示序整体重编号，再与相邻行交换位置
+	for i, pid := range ids {
+		if _, err := tx.Exec(`UPDATE job_entries SET pin_order=? WHERE id=?`, i+1, pid); err != nil {
+			tx.Rollback()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+			return
+		}
+	}
+	neighbor := idx - 1
+	if req.Direction == "down" {
+		neighbor = idx + 1
+	}
+	if _, err := tx.Exec(`UPDATE job_entries SET pin_order=? WHERE id=?`, neighbor+1, ids[idx]); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	if _, err := tx.Exec(`UPDATE job_entries SET pin_order=? WHERE id=?`, idx+1, ids[neighbor]); err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	s.audit(c, "move_job", "job", &id, req.Direction)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
