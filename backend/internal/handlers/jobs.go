@@ -15,10 +15,13 @@ import (
 )
 
 // ListJobs 就业共享表格（2027 届公司招聘信息，社区协作数据库）。
-// 支持地点（city LIKE）、方向（industry LIKE）、状态筛选；置顶优先（按 pin_order 手动排序），其余新建在前。
+// 支持地点（city LIKE）、方向（industry LIKE）、状态筛选；置顶优先（按 pin_order 手动排序），
+// 其余按最近更新时间在前：有人编辑/恢复后该行自动上浮到非置顶区第一位。
 func (s *Server) ListJobs(c *gin.Context) {
+	// 登录用户附带其“是否投递”状态；匿名（OptionalAuth 未命中）ID 为 0，EXISTS 恒为 false
+	u, _ := middleware.CurrentUser(c)
 	where := []string{"1=1"}
-	args := []interface{}{}
+	args := []interface{}{u.ID}
 	status := strings.TrimSpace(c.Query("status"))
 	if status == "" || status == "active" {
 		where = append(where, "j.status='active'")
@@ -41,12 +44,13 @@ func (s *Server) ListJobs(c *gin.Context) {
 			j.created_at, j.updated_at,
 			COALESCE(u.username, '官方'), COALESCE(le.username, u.username, '官方'),
 			(SELECT COUNT(*) FROM job_reviews r WHERE r.job_id = j.id),
-			(SELECT COUNT(*) FROM job_entry_versions v WHERE v.job_id = j.id)
+			(SELECT COUNT(*) FROM job_entry_versions v WHERE v.job_id = j.id),
+			EXISTS(SELECT 1 FROM job_applications a WHERE a.job_id=j.id AND a.user_id=?) AS my_applied
 		FROM job_entries j
 		LEFT JOIN users u ON u.id=j.user_id
 		LEFT JOIN users le ON le.id=j.last_editor_id
 		WHERE `+whereSQL+`
-		ORDER BY j.is_pinned DESC, j.pin_order ASC, j.created_at DESC, j.id DESC`, args...)
+		ORDER BY j.is_pinned DESC, j.pin_order ASC, j.updated_at DESC, j.id DESC`, args...)
 	if err != nil {
 		log.Printf("ListJobs query err: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -73,11 +77,12 @@ func (s *Server) ListJobs(c *gin.Context) {
 			updater  string
 			reviewCnt int
 			editCnt   int
+			applied   bool
 		)
 		if rows.Scan(&id, &uid, &company, &industry,
 			&city, &apply, &referral, &verified, &campus,
 			&status, &pinned, &reason,
-			&created, &updated, &author, &updater, &reviewCnt, &editCnt) == nil {
+			&created, &updated, &author, &updater, &reviewCnt, &editCnt, &applied) == nil {
 			items = append(items, gin.H{
 				"id": id, "user_id": uid, "company": company, "industry": industry,
 				"city": city, "apply_link": apply, "referral_code": referral,
@@ -85,7 +90,7 @@ func (s *Server) ListJobs(c *gin.Context) {
 				"is_pinned": pinned, "edit_reason": reason,
 				"created_at": created, "updated_at": updated,
 				"author": author, "updater": updater, "review_count": reviewCnt,
-				"edit_count": editCnt,
+				"edit_count": editCnt, "my_applied": applied,
 			})
 		}
 	}
@@ -367,6 +372,43 @@ func (s *Server) RestoreJob(c *gin.Context) {
 	}
 	s.recordJobVersion(id, u.ID, "恢复为有效记录",
 		company, industry, city, apply, referral, verified, campus)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// SetJobApplied 登录用户勾选/取消自己的“是否投递”状态。仅记录在 job_applications 表，
+// 不触碰 job_entries，因此不影响列表排序与置顶。
+func (s *Server) SetJobApplied(c *gin.Context) {
+	u, _ := middleware.CurrentUser(c)
+	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
+		return
+	}
+	var req struct {
+		Applied bool `json:"applied"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
+		return
+	}
+	var n int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM job_entries WHERE id=?`, id).Scan(&n); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	if n == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
+		return
+	}
+	if req.Applied {
+		_, err = s.DB.Exec(`INSERT IGNORE INTO job_applications (user_id, job_id) VALUES (?, ?)`, u.ID, id)
+	} else {
+		_, err = s.DB.Exec(`DELETE FROM job_applications WHERE user_id=? AND job_id=?`, u.ID, id)
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

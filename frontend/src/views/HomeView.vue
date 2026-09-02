@@ -34,7 +34,7 @@ onMounted(async () => {
     <section class="hero">
       <div class="hero-content">
         <p class="eyebrow">OPTICS · LEARNING · PRACTICE</p>
-        <h1>光研集</h1>
+        <h1>棱语 OptiTalk</h1>
         <p class="hero-lead">把光学问题，讲清楚、做出来。</p>
         <p class="hero-copy">
           面向光学学习者与工程师的问答社区。<br />从基础概念到工程实践，找到可靠答案，也留下你的经验。
@@ -47,7 +47,7 @@ onMounted(async () => {
         </div>
       </div>
       <div class="hero-visual">
-        <img :src="heroImg" alt="光研集" />
+        <img :src="heroImg" alt="棱语 OptiTalk" />
       </div>
     </section>
 

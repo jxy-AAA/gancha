@@ -10,8 +10,8 @@ const displayName = computed(() => auth.user?.username || '登录')
 <template>
   <header class="topbar">
     <router-link class="brand" to="/">
-      <img :src="icon" alt="光研集" />
-      <span>光研集</span>
+      <img :src="icon" alt="棱语 OptiTalk" />
+      <span>棱语 OptiTalk</span>
     </router-link>
     <nav>
       <router-link to="/ask">问答</router-link>

@@ -197,6 +197,14 @@ CREATE TABLE IF NOT EXISTS job_reviews (
   KEY idx_job_reviews_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS job_applications (
+  user_id BIGINT UNSIGNED NOT NULL,
+  job_id BIGINT UNSIGNED NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, job_id),
+  KEY idx_job_applications_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS article_comments (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   article_id BIGINT UNSIGNED NOT NULL,

@@ -108,11 +108,12 @@ func main() {
 		api.DELETE("/forum/replies/:id", middleware.Auth(conn, cfg.JWTSecret), h.DeleteForumReply)
 
 		// 就业共享表格（2027 届公司招聘信息，社区协作数据库）
-		api.GET("/jobs", h.ListJobs)
+		api.GET("/jobs", middleware.OptionalAuth(conn, cfg.JWTSecret), h.ListJobs)
 		api.POST("/jobs", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(20, time.Minute), h.CreateJob)
 		api.PUT("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(30, time.Minute), h.UpdateJob)
 		api.POST("/jobs/:id/flag", middleware.Auth(conn, cfg.JWTSecret), h.FlagJob)
 		api.POST("/jobs/:id/restore", middleware.Auth(conn, cfg.JWTSecret), h.RestoreJob)
+		api.POST("/jobs/:id/applied", middleware.Auth(conn, cfg.JWTSecret), h.SetJobApplied)
 		api.POST("/jobs/:id/revert", middleware.Auth(conn, cfg.JWTSecret), h.RevertJobVersion)
 		api.POST("/jobs/:id/pin", middleware.Auth(conn, cfg.JWTSecret), h.PinJob)
 		api.POST("/jobs/:id/move", middleware.Auth(conn, cfg.JWTSecret), h.MoveJob)
@@ -168,7 +169,7 @@ func main() {
 		})
 	}
 
-	log.Printf("光研集后端启动于 :%s", cfg.Port)
+	log.Printf("棱语 OptiTalk 后端启动于 :%s", cfg.Port)
 	if err := r.Run(":" + cfg.Port); err != nil {
 		log.Fatalf("服务启动失败: %v", err)
 	}

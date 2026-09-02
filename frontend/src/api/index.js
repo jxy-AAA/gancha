@@ -76,6 +76,7 @@ export default {
   createJob: (d) => api.post('/jobs', d),
   updateJob: (id, d) => api.put(`/jobs/${id}`, d),
   flagJob: (id, d) => api.post(`/jobs/${id}/flag`, d),
+  setJobApplied: (id, d) => api.post(`/jobs/${id}/applied`, d),
   restoreJob: (id) => api.post(`/jobs/${id}/restore`),
   revertJob: (id, d) => api.post(`/jobs/${id}/revert`, d),
   pinJob: (id, d) => api.post(`/jobs/${id}/pin`, d),

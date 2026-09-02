@@ -29,6 +29,8 @@ const versionsLoading = ref(false)
 const reviews = ref({}) // id -> { items, loading }
 const reviewText = ref({})
 const reviewAnon = ref({})
+const appliedMap = ref({}) // id -> 我是否已投递（勾选框数据源）
+const appliedPending = ref({}) // id -> 请求中（防连点）
 
 const statusLabel = { active: '正常', invalid: '已失效', duplicate: '重复', all: '全部' }
 const statusClass = { active: 'badge-green', invalid: 'badge-gray', duplicate: 'badge-teal' }
@@ -85,6 +87,9 @@ async function load() {
       industry: industryKeyword.value || undefined,
     })
     items.value = data.items
+    const m = {}
+    for (const it of data.items) if (it.my_applied) m[it.id] = true
+    appliedMap.value = m
     error.value = ''
   } catch (e) {
     error.value = e.message
@@ -104,6 +109,26 @@ function requireLogin() {
     return false
   }
   return true
+}
+
+// 我的投递勾选：仅记录个人状态，不触发整表刷新（不影响排序）
+async function toggleApplied(it) {
+  const target = !!appliedMap.value[it.id]
+  if (!auth.isLoggedIn) {
+    appliedMap.value = { ...appliedMap.value, [it.id]: false }
+    requireLogin()
+    return
+  }
+  if (appliedPending.value[it.id]) return
+  appliedPending.value = { ...appliedPending.value, [it.id]: true }
+  try {
+    await api.setJobApplied(it.id, { applied: target })
+  } catch (e) {
+    error.value = e.message
+    appliedMap.value = { ...appliedMap.value, [it.id]: !target }
+  } finally {
+    appliedPending.value = { ...appliedPending.value, [it.id]: false }
+  }
 }
 
 // ---- 新增 ----
@@ -384,7 +409,8 @@ onMounted(load)
 
     <p v-if="error" class="notice" style="margin-top: 14px">{{ error }}</p>
     <p v-if="!auth.isLoggedIn" class="notice" style="margin-top: 14px">
-      登录后即可参与共享编辑与评价：添加公司、更新招聘信息、对公司填写评价（可匿名）。
+      登录后即可参与共享编辑与评价：添加公司、更新招聘信息、对公司填写评价（可匿名），
+      还能在每家公司勾选「我的投递」记录个人进度（仅自己可见）。
     </p>
 
     <!-- 新增表单 -->
@@ -436,6 +462,20 @@ onMounted(load)
           <div v-if="it.city" class="job-row"><b>地点</b><span>{{ it.city }}</span></div>
           <div v-if="it.referral_code" class="job-row"><b>内推码</b><span>{{ it.referral_code }}</span></div>
           <div class="job-row"><b>校招状态</b><span :class="it.campus_status === '已开启' ? 'text-cs-open' : 'text-cs-pending'">{{ it.campus_status === '已开启' ? '已开启' : '待核验' }}</span></div>
+          <div class="job-row"><b>我的投递</b>
+            <span>
+              <label class="job-apply-check" :class="{ checked: appliedMap[it.id] }">
+                <input
+                  v-model="appliedMap[it.id]"
+                  type="checkbox"
+                  :disabled="!!appliedPending[it.id]"
+                  @change="toggleApplied(it)"
+                />
+                已投递
+              </label>
+              <span v-if="!auth.isLoggedIn" class="job-dim">（仅自己可见，登录后可标记）</span>
+            </span>
+          </div>
           <div class="job-row"><b>投递链接</b>
             <span>
               <template v-if="linkList(it.apply_link).length">
@@ -853,6 +893,24 @@ onMounted(load)
   width: 15px;
   height: 15px;
   accent-color: var(--primary);
+}
+.job-apply-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
+}
+.job-apply-check.checked {
+  color: var(--primary);
+  font-weight: 500;
+}
+.job-apply-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 .job-edit-card {
   margin-top: 16px;
