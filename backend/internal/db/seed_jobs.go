@@ -38,15 +38,20 @@ func seedJobEntries(conn *sql.DB) error {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.Prepare(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
-		city, apply_link, referral_code, verified_at, campus_status)
-		VALUES (0, 0, ?, ?, ?, ?, ?, ?, ?)`)
+		city, apply_link, referral_code, verified_at, campus_status, is_pinned)
+		VALUES (0, 0, ?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, r := range rows {
+		// 有内推码即自动置顶（与编辑规则一致：置顶完全由内推码决定）
+		pinned := 0
+		if r.ReferralCode != "" {
+			pinned = 1
+		}
 		if _, err := stmt.Exec(r.Company, r.Industry,
-			r.City, r.ApplyLink, r.ReferralCode, r.VerifiedAt, r.CampusStatus); err != nil {
+			r.City, r.ApplyLink, r.ReferralCode, r.VerifiedAt, r.CampusStatus, pinned); err != nil {
 			return err
 		}
 	}
