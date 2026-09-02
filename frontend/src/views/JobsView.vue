@@ -17,6 +17,8 @@ const saving = ref(false)
 const statusFilter = ref('active') // active | invalid | duplicate | all
 const cityKeyword = ref('')
 const industryKeyword = ref('')
+// 校招状态筛选（客户端）：默认全部，只看已开启
+const campusFilter = ref('all') // all | 已开启
 
 // 每张卡片的操作面板：panel.id + panel.mode(edit/flag/versions/reviews)
 const panel = ref({ id: 0, mode: '' })
@@ -46,6 +48,7 @@ const cityOptions = computed(() => {
 const filteredItems = computed(() => {
   let list = items.value
   if (statusFilter.value !== 'all') list = list.filter((it) => it.status === statusFilter.value)
+  if (campusFilter.value !== 'all') list = list.filter((it) => it.campus_status === campusFilter.value)
   return list
 })
 
@@ -53,6 +56,12 @@ const statusCounts = computed(() => {
   const c = { active: 0, invalid: 0, duplicate: 0, all: items.value.length }
   for (const it of items.value) c[it.status] = (c[it.status] || 0) + 1
   return c
+})
+
+const campusCounts = computed(() => {
+  let open = 0
+  for (const it of items.value) if (it.campus_status === '已开启') open += 1
+  return { all: items.value.length, open }
 })
 
 const linkList = (links) => String(links || '').split(/\n+/).map((s) => s.trim()).filter(Boolean)
@@ -103,7 +112,7 @@ function startCreate() {
   if (!requireLogin()) return
   newForm.value = {
     company: '', industry: '', city: '', apply_link: '',
-    referral_code: '', verified_at: '', edit_reason: '',
+    referral_code: '', verified_at: '', campus_status: '待核验', edit_reason: '',
   }
   panel.value = { id: 0, mode: '' }
 }
@@ -133,7 +142,7 @@ function startEdit(it) {
   editForm.value = {
     company: it.company, industry: it.industry, city: it.city,
     apply_link: it.apply_link, referral_code: it.referral_code, verified_at: it.verified_at,
-    edit_reason: '',
+    campus_status: it.campus_status || '待核验', edit_reason: '',
   }
 }
 function cancelEdit() {
@@ -319,6 +328,17 @@ onMounted(load)
       </button>
     </div>
 
+    <!-- 校招状态筛选 -->
+    <div class="job-filters job-cs-filter">
+      <span class="job-cs-label">校招状态</span>
+      <button class="filter-btn" :class="{ active: campusFilter === 'all' }" @click="campusFilter = 'all'">
+        全部 <b>{{ campusCounts.all }}</b>
+      </button>
+      <button class="filter-btn" :class="{ active: campusFilter === '已开启' }" @click="campusFilter = '已开启'">
+        只看已开启 <b>{{ campusCounts.open }}</b>
+      </button>
+    </div>
+
     <!-- 搜索栏：城市下拉 + 方向搜索 -->
     <div class="job-searchbar">
       <input
@@ -360,6 +380,7 @@ onMounted(load)
         <label>地点<input v-model="newForm.city" maxlength="100" placeholder="如：深圳、上海等" /></label>
         <label>内推码<input v-model="newForm.referral_code" maxlength="50" placeholder="如：NTxxxxxx" /></label>
         <label>上次核验<input v-model="newForm.verified_at" type="date" /></label>
+        <label v-if="auth.isAdmin">校招状态<select v-model="newForm.campus_status"><option value="待核验">待核验</option><option value="已开启">已开启</option></select></label>
         <label>来源备注<input v-model="newForm.edit_reason" maxlength="200" placeholder="可选：信息的来源/备注" /></label>
         <label class="job-form-wide">投递链接<textarea v-model="newForm.apply_link" maxlength="1000" rows="2" placeholder="每行一个链接" /></label>
       </div>
@@ -380,6 +401,9 @@ onMounted(load)
         <div class="job-card-head">
           <div class="job-card-title">
             <span v-if="it.is_pinned" class="badge badge-pinned">置顶</span>
+            <span :class="it.campus_status === '已开启' ? 'badge badge-cs-open' : 'badge badge-cs-pending'">
+              {{ it.campus_status === '已开启' ? '已开启' : '待核验' }}
+            </span>
             <span :class="['badge', statusClass[it.status]]">{{ statusLabel[it.status] }}</span>
             <h3>{{ it.company }}</h3>
           </div>
@@ -440,6 +464,7 @@ onMounted(load)
               <label>地点<input v-model="editForm.city" maxlength="100" /></label>
               <label>内推码<input v-model="editForm.referral_code" maxlength="50" /></label>
               <label>上次核验<input v-model="editForm.verified_at" type="date" /></label>
+              <label v-if="auth.isAdmin">校招状态<select v-model="editForm.campus_status"><option value="待核验">待核验</option><option value="已开启">已开启</option></select></label>
               <label class="job-form-wide job-reason">
                 修改原因 *<input v-model="editForm.edit_reason" maxlength="200" placeholder="说明这次改了什么、为什么改" />
               </label>
@@ -535,6 +560,15 @@ onMounted(load)
 .job-filters .filter-btn.active b {
   color: #fff;
 }
+.job-cs-filter {
+  margin-top: 6px;
+}
+.job-cs-label {
+  align-self: center;
+  font-size: 12px;
+  color: var(--muted);
+  margin-right: 2px;
+}
 .job-searchbar {
   display: flex;
   gap: 8px;
@@ -596,6 +630,14 @@ onMounted(load)
 .badge-pinned {
   background: #ffe9d6;
   color: #d2691e;
+}
+.badge-cs-open {
+  background: #e4f4ea;
+  color: #1e7e43;
+}
+.badge-cs-pending {
+  background: #f0f2f3;
+  color: #6b7478;
 }
 .job-card-rows {
   display: grid;

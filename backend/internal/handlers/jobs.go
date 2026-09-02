@@ -36,7 +36,7 @@ func (s *Server) ListJobs(c *gin.Context) {
 	}
 	whereSQL := strings.Join(where, " AND ")
 	rows, err := s.DB.Query(`SELECT j.id, j.user_id, j.company, j.industry,
-			j.city, j.apply_link, j.referral_code, j.verified_at,
+			j.city, j.apply_link, j.referral_code, j.verified_at, j.campus_status,
 			j.status, j.is_pinned, j.edit_reason,
 			j.created_at, j.updated_at,
 			COALESCE(u.username, '官方'), COALESCE(le.username, u.username, '官方'),
@@ -63,6 +63,7 @@ func (s *Server) ListJobs(c *gin.Context) {
 			apply    string
 			referral string
 			verified string
+			campus   string
 			status   string
 			pinned   bool
 			reason   string
@@ -74,14 +75,15 @@ func (s *Server) ListJobs(c *gin.Context) {
 			editCnt   int
 		)
 		if rows.Scan(&id, &uid, &company, &industry,
-			&city, &apply, &referral, &verified,
+			&city, &apply, &referral, &verified, &campus,
 			&status, &pinned, &reason,
 			&created, &updated, &author, &updater, &reviewCnt, &editCnt) == nil {
 			items = append(items, gin.H{
 				"id": id, "user_id": uid, "company": company, "industry": industry,
 				"city": city, "apply_link": apply, "referral_code": referral,
-				"verified_at": verified, "status": status, "is_pinned": pinned,
-				"edit_reason": reason, "created_at": created, "updated_at": updated,
+				"verified_at": verified, "campus_status": campus, "status": status,
+				"is_pinned": pinned, "edit_reason": reason,
+				"created_at": created, "updated_at": updated,
 				"author": author, "updater": updater, "review_count": reviewCnt,
 				"edit_count": editCnt,
 			})
@@ -97,6 +99,7 @@ type jobReq struct {
 	ApplyLink    string `json:"apply_link"`
 	ReferralCode string `json:"referral_code"`
 	VerifiedAt   string `json:"verified_at"`
+	CampusStatus string `json:"campus_status"`
 	EditReason   string `json:"edit_reason"`
 }
 
@@ -107,6 +110,7 @@ func (r *jobReq) sanitize() string {
 	r.ApplyLink = strings.TrimSpace(r.ApplyLink)
 	r.ReferralCode = strings.TrimSpace(r.ReferralCode)
 	r.VerifiedAt = strings.TrimSpace(r.VerifiedAt)
+	r.CampusStatus = strings.TrimSpace(r.CampusStatus)
 	r.EditReason = strings.TrimSpace(r.EditReason)
 	if r.Company == "" || len([]rune(r.Company)) > 100 {
 		return "公司名称不能为空且不超过 100 字"
@@ -126,6 +130,9 @@ func (r *jobReq) sanitize() string {
 	if len([]rune(r.VerifiedAt)) > 10 {
 		return "核验日期格式不正确"
 	}
+	if r.CampusStatus != "" && r.CampusStatus != "已开启" && r.CampusStatus != "待核验" {
+		return "校招状态仅支持：已开启 / 待核验"
+	}
 	if len([]rune(r.EditReason)) > 200 {
 		return "修改原因不超过 200 字"
 	}
@@ -134,12 +141,12 @@ func (r *jobReq) sanitize() string {
 
 // recordJobVersion 把一条记录的快照写入版本历史（用于修改、标记失效/重复、恢复等）。
 func (s *Server) recordJobVersion(jobID, editorID int64, reason, company, industry,
-	city, applyLink, referralCode, verified string) {
+	city, applyLink, referralCode, verified, campus string) {
 	_, _ = s.DB.Exec(`INSERT INTO job_entry_versions
-		(job_id, editor_id, reason, company, industry, city, apply_link, referral_code, verified_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		(job_id, editor_id, reason, company, industry, city, apply_link, referral_code, verified_at, campus_status)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		jobID, editorID, reason, company, industry,
-		city, applyLink, referralCode, verified)
+		city, applyLink, referralCode, verified, campus)
 }
 
 // CreateJob 新增一行（登录用户均可），同时记录初始版本。
@@ -159,11 +166,16 @@ func (s *Server) CreateJob(c *gin.Context) {
 	if req.ReferralCode != "" {
 		pinned = 1
 	}
+	// 校招状态仅管理员可指定（默认待核验，需核验后才可标已开启）
+	campus := "待核验"
+	if u.Role == "admin" && req.CampusStatus != "" {
+		campus = req.CampusStatus
+	}
 	res, err := s.DB.Exec(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
-			city, apply_link, referral_code, verified_at, status, is_pinned, pin_manual, edit_reason)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?)`,
+			city, apply_link, referral_code, verified_at, campus_status, status, is_pinned, pin_manual, edit_reason)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, 0, ?)`,
 		u.ID, u.ID, req.Company, req.Industry,
-		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, pinned, req.EditReason)
+		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, campus, pinned, req.EditReason)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -174,7 +186,7 @@ func (s *Server) CreateJob(c *gin.Context) {
 		reason = "创建记录"
 	}
 	s.recordJobVersion(id, u.ID, reason, req.Company, req.Industry,
-		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt)
+		req.City, req.ApplyLink, req.ReferralCode, req.VerifiedAt, campus)
 	c.JSON(http.StatusOK, gin.H{"id": id})
 }
 
@@ -203,12 +215,13 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		oldCompany, oldIndustry string
 		oldCity, oldApply       string
 		oldReferral, oldVerified string
+		oldCampus               string
 		oldPinManual            bool
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at, pin_manual FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, campus_status, pin_manual FROM job_entries WHERE id=?`, id).
 		Scan(&oldCompany, &oldIndustry,
-			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldPinManual)
+			&oldCity, &oldApply, &oldReferral, &oldVerified, &oldCampus, &oldPinManual)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -219,12 +232,17 @@ func (s *Server) UpdateJob(c *gin.Context) {
 	}
 	// 置顶规则：有内推码自动置顶（删码即取消）；管理员手动置顶（pin_manual=1）保留，不被用户编辑清除
 	pinned := req.ReferralCode != "" || oldPinManual
+	// 校招状态仅管理员可改，非管理员编辑时保持原值
+	newCampus := oldCampus
+	if u.Role == "admin" && req.CampusStatus != "" {
+		newCampus = req.CampusStatus
+	}
 	res, err := s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
-			referral_code=?, verified_at=?, status='active', is_pinned=?, pin_manual=?,
+			referral_code=?, verified_at=?, campus_status=?, status='active', is_pinned=?, pin_manual=?,
 			last_editor_id=?, edit_reason=?, updated_at=?
 		WHERE id=?`,
 		req.Company, req.Industry, req.City, req.ApplyLink,
-		req.ReferralCode, req.VerifiedAt, pinned, oldPinManual,
+		req.ReferralCode, req.VerifiedAt, newCampus, pinned, oldPinManual,
 		u.ID, req.EditReason, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
@@ -235,7 +253,7 @@ func (s *Server) UpdateJob(c *gin.Context) {
 		return
 	}
 	s.recordJobVersion(id, u.ID, req.EditReason, oldCompany, oldIndustry,
-		oldCity, oldApply, oldReferral, oldVerified)
+		oldCity, oldApply, oldReferral, oldVerified, oldCampus)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -267,12 +285,12 @@ func (s *Server) FlagJob(c *gin.Context) {
 	var (
 		company, industry string
 		city, apply       string
-		referral, verified string
+		referral, verified, campus string
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, campus_status FROM job_entries WHERE id=?`, id).
 		Scan(&company, &industry,
-			&city, &apply, &referral, &verified)
+			&city, &apply, &referral, &verified, &campus)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -289,7 +307,7 @@ func (s *Server) FlagJob(c *gin.Context) {
 	}
 	s.recordJobVersion(id, u.ID, "标记为"+
 		map[string]string{"invalid": "失效", "duplicate": "重复"}[req.Flag]+"："+req.Reason,
-		company, industry, city, apply, referral, verified)
+		company, industry, city, apply, referral, verified, campus)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -304,12 +322,12 @@ func (s *Server) RestoreJob(c *gin.Context) {
 	var (
 		company, industry string
 		city, apply       string
-		referral, verified, status string
+		referral, verified, campus, status string
 	)
 	err = s.DB.QueryRow(`SELECT company, industry,
-			city, apply_link, referral_code, verified_at, status FROM job_entries WHERE id=?`, id).
+			city, apply_link, referral_code, verified_at, campus_status, status FROM job_entries WHERE id=?`, id).
 		Scan(&company, &industry,
-			&city, &apply, &referral, &verified, &status)
+			&city, &apply, &referral, &verified, &campus, &status)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "记录不存在"})
 		return
@@ -329,7 +347,7 @@ func (s *Server) RestoreJob(c *gin.Context) {
 		return
 	}
 	s.recordJobVersion(id, u.ID, "恢复为有效记录",
-		company, industry, city, apply, referral, verified)
+		company, industry, city, apply, referral, verified, campus)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -399,14 +417,14 @@ func (s *Server) RevertJobVersion(c *gin.Context) {
 	var (
 		company, industry string
 		city, apply       string
-		referral, verified, reason string
+		referral, verified, campus, reason string
 		editorID          int64
 	)
 	err = s.DB.QueryRow(`SELECT editor_id, reason, company, industry,
-			city, apply_link, referral_code, verified_at
+			city, apply_link, referral_code, verified_at, campus_status
 		FROM job_entry_versions WHERE id=? AND job_id=?`, req.VersionID, id).
 		Scan(&editorID, &reason, &company, &industry,
-			&city, &apply, &referral, &verified)
+			&city, &apply, &referral, &verified, &campus)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "版本不存在"})
 		return
@@ -416,11 +434,11 @@ func (s *Server) RevertJobVersion(c *gin.Context) {
 		return
 	}
 	_, err = s.DB.Exec(`UPDATE job_entries SET company=?, industry=?, city=?, apply_link=?,
-			referral_code=?, verified_at=?, status='active',
+			referral_code=?, verified_at=?, campus_status=?, status='active',
 			last_editor_id=?, edit_reason=?, updated_at=?
 		WHERE id=?`,
 		company, industry, city, apply,
-		referral, verified,
+		referral, verified, campus,
 		u.ID, "管理员恢复版本 #"+strconv.FormatInt(req.VersionID, 10)+"（"+reason+"）", time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})

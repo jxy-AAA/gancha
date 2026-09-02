@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS job_entries (
   apply_link VARCHAR(1000) NOT NULL DEFAULT '',
   referral_code VARCHAR(50) NOT NULL DEFAULT '',
   verified_at VARCHAR(10) NOT NULL DEFAULT '',
+  campus_status VARCHAR(10) NOT NULL DEFAULT '待核验',
   status VARCHAR(20) NOT NULL DEFAULT 'active',
   is_pinned TINYINT(1) NOT NULL DEFAULT 0,
   pin_manual TINYINT(1) NOT NULL DEFAULT 0,
@@ -180,6 +181,7 @@ CREATE TABLE IF NOT EXISTS job_entry_versions (
   apply_link VARCHAR(1000) NOT NULL DEFAULT '',
   referral_code VARCHAR(50) NOT NULL DEFAULT '',
   verified_at VARCHAR(10) NOT NULL DEFAULT '',
+  campus_status VARCHAR(10) NOT NULL DEFAULT '待核验',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_job_versions_job (job_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

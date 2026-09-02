@@ -68,6 +68,7 @@ func Open(dsn string) (*sql.DB, error) {
 		"apply_link":    "VARCHAR(1000) NOT NULL DEFAULT ''",
 		"referral_code": "VARCHAR(50) NOT NULL DEFAULT ''",
 		"verified_at":   "VARCHAR(10) NOT NULL DEFAULT ''",
+		"campus_status": "VARCHAR(10) NOT NULL DEFAULT '待核验'",
 		"status":        "VARCHAR(20) NOT NULL DEFAULT 'active'",
 		"is_pinned":     "TINYINT(1) NOT NULL DEFAULT 0",
 		"pin_manual":    "TINYINT(1) NOT NULL DEFAULT 0",
@@ -123,6 +124,15 @@ func Open(dsn string) (*sql.DB, error) {
 			if _, err := conn.Exec(`ALTER TABLE job_entry_versions DROP COLUMN ` + col); err != nil {
 				return nil, err
 			}
+		}
+	}
+	// job_entry_versions 校招状态列（幂等）
+	var verHasCampus int
+	_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='job_entry_versions' AND COLUMN_NAME='campus_status'`).Scan(&verHasCampus)
+	if verHasCampus == 0 {
+		if _, err := conn.Exec(`ALTER TABLE job_entry_versions ADD COLUMN campus_status VARCHAR(10) NOT NULL DEFAULT '待核验'`); err != nil {
+			return nil, err
 		}
 	}
 	// 现有环境的 forum_posts 升级为“排序/置顶/解决/标签”增强列（幂等）

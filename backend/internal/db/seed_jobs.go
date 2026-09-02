@@ -16,6 +16,7 @@ type jobSeedRow struct {
 	ApplyLink    string `json:"apply_link"`
 	ReferralCode string `json:"referral_code"`
 	VerifiedAt   string `json:"verified_at"`
+	CampusStatus string `json:"campus_status"`
 }
 
 // seedJobEntries 首次启动（表中尚无 Excel 格式数据）时导入 2027 届光学公司招聘信息。
@@ -37,15 +38,15 @@ func seedJobEntries(conn *sql.DB) error {
 	}
 	defer tx.Rollback()
 	stmt, err := tx.Prepare(`INSERT INTO job_entries (user_id, last_editor_id, company, industry,
-		city, apply_link, referral_code, verified_at)
-		VALUES (0, 0, ?, ?, ?, ?, ?, ?)`)
+		city, apply_link, referral_code, verified_at, campus_status)
+		VALUES (0, 0, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 	for _, r := range rows {
 		if _, err := stmt.Exec(r.Company, r.Industry,
-			r.City, r.ApplyLink, r.ReferralCode, r.VerifiedAt); err != nil {
+			r.City, r.ApplyLink, r.ReferralCode, r.VerifiedAt, r.CampusStatus); err != nil {
 			return err
 		}
 	}
