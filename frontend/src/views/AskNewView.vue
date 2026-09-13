@@ -40,6 +40,7 @@ async function submit() {
       title: title.value.trim(),
       body: body.value,
       tags: tags.value.trim(),
+      attachments: files.value,
     })
     router.push(`/ask/${data.id}`)
   } catch (e) {

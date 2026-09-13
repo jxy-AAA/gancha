@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import { timeAgo } from '../utils/time'
+import { setSeo } from '../utils/seo'
 
 const route = useRoute()
 const router = useRouter()
@@ -22,6 +23,12 @@ async function load() {
   try {
     const { data } = await api.article(id.value)
     article.value = data
+    setSeo({
+      title: data.title,
+      description: data.summary || (data.body || '').replace(/[#*`>\s]+/g, ' ').trim().slice(0, 120),
+      path: route.path,
+      type: 'article',
+    })
     api.viewArticle(id.value).catch(() => {})
     const { data: cd } = await api.articleComments(id.value)
     comments.value = cd.items

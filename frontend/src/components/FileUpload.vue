@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import api from '../api'
 
 const props = defineProps({
@@ -9,11 +9,6 @@ const emit = defineEmits(['update:modelValue'])
 const hint = ref('')
 const uploading = ref(false)
 const fileInput = ref(null)
-
-watch(
-  () => props.modelValue,
-  (v) => emit('update:modelValue', v),
-)
 
 async function onPick(e) {
   const files = [...e.target.files]
@@ -41,11 +36,9 @@ async function onPick(e) {
   }
 }
 
+// 只从当前列表移除，不删除服务端文件：同一文件可能已被其它帖子引用
 function remove(item) {
   emit('update:modelValue', props.modelValue.filter((f) => f.url !== item.url))
-  if (item.url.startsWith('/uploads/')) {
-    api.deleteUpload(item.url.replace('/uploads/', '')).catch(() => {})
-  }
 }
 </script>
 

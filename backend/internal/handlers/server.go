@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
+	"sync"
+	"time"
 
 	"guangyanji/internal/config"
 
@@ -13,6 +15,33 @@ import (
 type Server struct {
 	DB     *sql.DB
 	Cfg    *config.Config
+	prMu   sync.Mutex
+	prShell string
+	prCache map[string]prCacheEntry
+}
+
+type prCacheEntry struct {
+	html    string
+	expires time.Time
+}
+
+func (s *Server) prCacheGet(key string) (string, bool) {
+	s.prMu.Lock()
+	defer s.prMu.Unlock()
+	e, ok := s.prCache[key]
+	if !ok || time.Now().After(e.expires) {
+		return "", false
+	}
+	return e.html, true
+}
+
+func (s *Server) prCachePut(key, html string) {
+	s.prMu.Lock()
+	defer s.prMu.Unlock()
+	if s.prCache == nil || len(s.prCache) >= prerenderCacheMax {
+		s.prCache = make(map[string]prCacheEntry, prerenderCacheMax)
+	}
+	s.prCache[key] = prCacheEntry{html: html, expires: time.Now().Add(prerenderTTL)}
 }
 
 func New(db *sql.DB, cfg *config.Config) *Server {

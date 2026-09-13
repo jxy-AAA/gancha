@@ -156,18 +156,20 @@ func (s *Server) GetForumPost(c *gin.Context) {
 		isSolved     bool
 		tags         string
 		lastReplyAt  sql.NullTime
+		filesRaw     string
 	)
 	err = s.DB.QueryRow(`SELECT p.board_id, b.name, p.title, p.body, p.views, u.username, u.avatar,
 			p.created_at, p.edited_at, p.user_id, p.is_anonymous, p.is_pinned, p.is_solved, p.tags,
 			(SELECT COUNT(*) FROM forum_replies r WHERE r.post_id=p.id),
 			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_post' AND v.target_id=p.id),
-			(SELECT MAX(r.created_at) FROM forum_replies r WHERE r.post_id=p.id)
+			(SELECT MAX(r.created_at) FROM forum_replies r WHERE r.post_id=p.id),
+			p.attachments
 		FROM forum_posts p
 		JOIN users u ON u.id=p.user_id
 		LEFT JOIN forum_boards b ON b.id=p.board_id
 		WHERE p.id=?`, id).
 		Scan(&bid, &bName, &title, &body, &views, &author, &avatar, &created, &edited, &userID,
-			&isAnonymous, &isPinned, &isSolved, &tags, &replyCnt, &score, &lastReplyAt)
+			&isAnonymous, &isPinned, &isSolved, &tags, &replyCnt, &score, &lastReplyAt, &filesRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
 		return
@@ -190,13 +192,15 @@ func (s *Server) GetForumPost(c *gin.Context) {
 		"is_pinned": isPinned, "is_solved": isSolved, "tags": tags,
 		"last_reply_at": lastReplyAt.Time,
 		"created_at": created, "edited_at": edited.Time, "reply_count": replyCnt, "score": score,
-		"replies": replies,
+		"attachments": attachmentsJSON(filesRaw),
+		"replies":     replies,
 	})
 }
 
 func (s *Server) listReplies(postID int64) ([]gin.H, error) {
 	rows, err := s.DB.Query(`SELECT r.id, r.user_id, r.body, r.created_at, u.username, u.avatar,
-			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_reply' AND v.target_id=r.id)
+			(SELECT COUNT(*) FROM votes v WHERE v.target_type='forum_reply' AND v.target_id=r.id),
+			r.attachments
 		FROM forum_replies r JOIN users u ON u.id=r.user_id
 		WHERE r.post_id=? ORDER BY r.created_at ASC`, postID)
 	if err != nil {
@@ -206,28 +210,31 @@ func (s *Server) listReplies(postID int64) ([]gin.H, error) {
 	items := make([]gin.H, 0)
 	for rows.Next() {
 		var (
-			id, uid int64
-			body    string
-			created time.Time
-			author  string
-			avatar  string
-			score   int
+			id, uid  int64
+			body     string
+			created  time.Time
+			author   string
+			avatar   string
+			score    int
+			filesRaw string
 		)
-		if rows.Scan(&id, &uid, &body, &created, &author, &avatar, &score) == nil {
+		if rows.Scan(&id, &uid, &body, &created, &author, &avatar, &score, &filesRaw) == nil {
 			items = append(items, gin.H{"id": id, "user_id": uid, "body": body, "author": author,
-				"avatar": avatar, "created_at": created, "score": score})
+				"avatar": avatar, "created_at": created, "score": score,
+				"attachments": attachmentsJSON(filesRaw)})
 		}
 	}
 	return items, nil
 }
 
 type forumPostReq struct {
-	BoardID     int64  `json:"board_id"`
-	Title       string `json:"title"`
-	Body        string `json:"body"`
-	Tags        string `json:"tags"`
-	IsAnonymous bool   `json:"is_anonymous"`
-	IsSolved    bool   `json:"is_solved"`
+	BoardID     int64        `json:"board_id"`
+	Title       string       `json:"title"`
+	Body        string       `json:"body"`
+	Tags        string       `json:"tags"`
+	IsAnonymous bool         `json:"is_anonymous"`
+	IsSolved    bool         `json:"is_solved"`
+	Attachments []Attachment `json:"attachments"`
 }
 
 // CreateForumPost 发帖。
@@ -259,8 +266,13 @@ func (s *Server) CreateForumPost(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "板块不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body, tags, is_anonymous) VALUES (?, ?, ?, ?, ?, ?)`,
-		req.BoardID, u.ID, req.Title, req.Body, req.Tags, req.IsAnonymous)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	res, err := s.DB.Exec(`INSERT INTO forum_posts (board_id, user_id, title, body, tags, is_anonymous, attachments) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		req.BoardID, u.ID, req.Title, req.Body, req.Tags, req.IsAnonymous, attachments)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -302,8 +314,13 @@ func (s *Server) UpdateForumPost(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权编辑"})
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE forum_posts SET board_id=?, title=?, body=?, tags=?, is_solved=?, edited_at=? WHERE id=?`,
-		req.BoardID, req.Title, req.Body, req.Tags, req.IsSolved, time.Now(), id)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE forum_posts SET board_id=?, title=?, body=?, tags=?, is_solved=?, attachments=?, edited_at=? WHERE id=?`,
+		req.BoardID, req.Title, req.Body, req.Tags, req.IsSolved, attachments, time.Now(), id)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
@@ -389,7 +406,13 @@ func (s *Server) CreateForumReply(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "帖子不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO forum_replies (post_id, user_id, body) VALUES (?, ?, ?)`, pid, u.ID, req.Body)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	res, err := s.DB.Exec(`INSERT INTO forum_replies (post_id, user_id, body, attachments) VALUES (?, ?, ?, ?)`,
+		pid, u.ID, req.Body, attachments)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -429,7 +452,12 @@ func (s *Server) UpdateForumReply(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权编辑"})
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE forum_replies SET body=? WHERE id=?`, req.Body, id)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE forum_replies SET body=?, attachments=? WHERE id=?`, req.Body, attachments, id)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

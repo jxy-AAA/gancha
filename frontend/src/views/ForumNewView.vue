@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import Editor from '../components/Editor.vue'
+import FileUpload from '../components/FileUpload.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -13,6 +14,7 @@ const title = ref('')
 const body = ref('')
 const tags = ref('')
 const isAnonymous = ref(false)
+const attachments = ref([])
 const error = ref('')
 const submitting = ref(false)
 
@@ -40,6 +42,7 @@ async function submit() {
       body: body.value,
       tags: tags.value.trim(),
       is_anonymous: isAnonymous.value,
+      attachments: attachments.value,
     })
     router.push(`/forum/${data.id}`)
   } catch (e) {
@@ -65,6 +68,8 @@ async function submit() {
       <input v-model="tags" type="text" maxlength="250" placeholder="如：光学设计, 考研, 行业动态" />
       <label>内容</label>
       <Editor v-model="body" :rows="10" placeholder="自由讨论：行业动态、学术问题、资源交流…" />
+      <label>附件（可选，最多 5 个，单个不超过 10MB）</label>
+      <FileUpload v-model="attachments" />
       <label class="anon-option">
         <input v-model="isAnonymous" type="checkbox" />
         匿名发布（作者显示为「匿名」）

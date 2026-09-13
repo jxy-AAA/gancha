@@ -151,6 +151,17 @@ func Open(dsn string) (*sql.DB, error) {
 			}
 		}
 	}
+	// 附件列（幂等）：问答/回答/论坛帖子/论坛回复支持附件（JSON 数组文本）
+	for _, tbl := range []string{"questions", "answers", "forum_posts", "forum_replies"} {
+		var n int
+		_ = conn.QueryRow(`SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+			WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=? AND COLUMN_NAME='attachments'`, tbl).Scan(&n)
+		if n == 0 {
+			if _, err := conn.Exec(`ALTER TABLE ` + tbl + ` ADD COLUMN attachments TEXT NOT NULL`); err != nil {
+				return nil, err
+			}
+		}
+	}
 	// 旧版就业表字段（position/url/note）已废弃：NOT NULL 无默认值会阻塞新插入，幂等删除。
 	// 注意：status 现在被复用为“失效/重复”标记列，不能删除。
 	for _, col := range []string{"position", "url", "note"} {

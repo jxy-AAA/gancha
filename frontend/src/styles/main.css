@@ -351,6 +351,31 @@ button.text-link {
   width: 44px;
   height: 44px;
 }
+/* 附件 chip：详情页正文下方展示可下载附件 */
+.attachment-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.attachment-row .attachment-label {
+  color: var(--muted);
+}
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #eef4f4;
+  color: var(--teal);
+  border-radius: 5px;
+  padding: 4px 10px;
+  text-decoration: none;
+}
+.attachment-chip:hover {
+  background: #dceaea;
+}
 
 /* ---------- 详情页 ---------- */
 .detail-card {

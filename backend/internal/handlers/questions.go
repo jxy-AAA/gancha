@@ -132,16 +132,18 @@ func (s *Server) GetQuestion(c *gin.Context) {
 		created     time.Time
 		edited      sql.NullTime
 		score       int
+		filesRaw    string
 	)
 	err = s.DB.QueryRow(`SELECT q.id, q.category_id, cat.name, q.title, q.body, q.tags, q.views,
 			q.status, q.accepted_answer_id, u.username, u.avatar, q.created_at, q.edited_at,
-			(SELECT COUNT(*) FROM votes v WHERE v.target_type='question' AND v.target_id=q.id)
+			(SELECT COUNT(*) FROM votes v WHERE v.target_type='question' AND v.target_id=q.id),
+			q.attachments
 		FROM questions q
 		JOIN users u ON u.id=q.user_id
 		LEFT JOIN categories cat ON cat.id=q.category_id
 		WHERE q.id=?`, id).
 		Scan(&qid, &catID, &catName, &title, &body, &tags, &views, &status, &accepted,
-			&author, &avatar, &created, &edited, &score)
+			&author, &avatar, &created, &edited, &score, &filesRaw)
 	if errors.Is(err, sql.ErrNoRows) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "问题不存在"})
 		return
@@ -155,6 +157,7 @@ func (s *Server) GetQuestion(c *gin.Context) {
 		"title": title, "body": body, "tags": tags, "views": views, "status": status,
 		"accepted_answer_id": accepted.Int64, "author": author, "author_avatar": avatar.String,
 		"created_at": created, "edited_at": edited.Time, "score": score,
+		"attachments": attachmentsJSON(filesRaw),
 	})
 }
 
@@ -172,10 +175,11 @@ func (s *Server) RegisterView(c *gin.Context) {
 // ---- 发布 / 编辑 / 删除 ----
 
 type questionReq struct {
-	CategoryID int64  `json:"category_id"`
-	Title      string `json:"title"`
-	Body       string `json:"body"`
-	Tags       string `json:"tags"`
+	CategoryID  int64        `json:"category_id"`
+	Title       string       `json:"title"`
+	Body        string       `json:"body"`
+	Tags        string       `json:"tags"`
+	Attachments []Attachment `json:"attachments"`
 }
 
 func validateQuestion(req *questionReq) (string, bool) {
@@ -214,8 +218,13 @@ func (s *Server) CreateQuestion(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "分类不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO questions (user_id, category_id, title, body, tags) VALUES (?, ?, ?, ?, ?)`,
-		u.ID, req.CategoryID, req.Title, req.Body, req.Tags)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	res, err := s.DB.Exec(`INSERT INTO questions (user_id, category_id, title, body, tags, attachments) VALUES (?, ?, ?, ?, ?, ?)`,
+		u.ID, req.CategoryID, req.Title, req.Body, req.Tags, attachments)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -250,8 +259,13 @@ func (s *Server) UpdateQuestion(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权编辑"})
 		return
 	}
-	_, err = s.DB.Exec(`UPDATE questions SET category_id=?, title=?, body=?, tags=?, edited_at=? WHERE id=?`,
-		req.CategoryID, req.Title, req.Body, req.Tags, time.Now(), id)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	_, err = s.DB.Exec(`UPDATE questions SET category_id=?, title=?, body=?, tags=?, attachments=?, edited_at=? WHERE id=?`,
+		req.CategoryID, req.Title, req.Body, req.Tags, attachments, time.Now(), id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -292,7 +306,8 @@ func (s *Server) DeleteQuestion(c *gin.Context) {
 // ---- 回答 ----
 
 type answerReq struct {
-	Body string `json:"body"`
+	Body        string       `json:"body"`
+	Attachments []Attachment `json:"attachments"`
 }
 
 // ListAnswers 问题下的回答列表。
@@ -305,7 +320,8 @@ func (s *Server) ListAnswers(c *gin.Context) {
 	var accepted sql.NullInt64
 	_ = s.DB.QueryRow(`SELECT accepted_answer_id FROM questions WHERE id=?`, qid).Scan(&accepted)
 	rows, err := s.DB.Query(`SELECT a.id, a.user_id, a.body, a.created_at, a.edited_at, u.username, u.role, u.avatar,
-			(SELECT COUNT(*) FROM votes v WHERE v.target_type='answer' AND v.target_id=a.id) AS score
+			(SELECT COUNT(*) FROM votes v WHERE v.target_type='answer' AND v.target_id=a.id) AS score,
+			a.attachments
 		FROM answers a JOIN users u ON u.id=a.user_id
 		WHERE a.question_id=? ORDER BY a.created_at ASC`, qid)
 	if err != nil {
@@ -324,14 +340,16 @@ func (s *Server) ListAnswers(c *gin.Context) {
 			role    string
 			avatar  string
 			score   int
+			filesRaw string
 		)
-		if err := rows.Scan(&id, &uid, &body, &created, &edited, &author, &role, &avatar, &score); err != nil {
+		if err := rows.Scan(&id, &uid, &body, &created, &edited, &author, &role, &avatar, &score, &filesRaw); err != nil {
 			continue
 		}
 		items = append(items, gin.H{
 			"id": id, "user_id": uid, "body": body, "author": author, "author_role": role,
 			"avatar": avatar, "score": score, "accepted": accepted.Valid && accepted.Int64 == id,
 			"created_at": created, "edited_at": edited.Time,
+			"attachments": attachmentsJSON(filesRaw),
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"items": items, "accepted_answer_id": accepted.Int64})
@@ -360,7 +378,13 @@ func (s *Server) CreateAnswer(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "问题不存在"})
 		return
 	}
-	res, err := s.DB.Exec(`INSERT INTO answers (question_id, user_id, body) VALUES (?, ?, ?)`, qid, u.ID, req.Body)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	res, err := s.DB.Exec(`INSERT INTO answers (question_id, user_id, body, attachments) VALUES (?, ?, ?, ?)`,
+		qid, u.ID, req.Body, attachments)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
@@ -400,7 +424,13 @@ func (s *Server) UpdateAnswer(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "无权编辑"})
 		return
 	}
-	_, _ = s.DB.Exec(`UPDATE answers SET body=?, edited_at=? WHERE id=?`, req.Body, time.Now(), aid)
+	attachments, msg := marshalAttachments(req.Attachments)
+	if msg != "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+		return
+	}
+	_, _ = s.DB.Exec(`UPDATE answers SET body=?, attachments=?, edited_at=? WHERE id=?`,
+		req.Body, attachments, time.Now(), aid)
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 

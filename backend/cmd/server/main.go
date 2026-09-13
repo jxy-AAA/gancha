@@ -35,6 +35,7 @@ func main() {
 	r.MaxMultipartMemory = 50 << 20
 
 	h := handlers.New(conn, cfg)
+	h.SetShell(cfg.FrontendDist)
 
 	// 健康检查
 	r.GET("/healthz", h.Healthz)
@@ -109,6 +110,7 @@ func main() {
 
 		// 就业共享表格（2027 届公司招聘信息，社区协作数据库）
 		api.GET("/jobs", middleware.OptionalAuth(conn, cfg.JWTSecret), h.ListJobs)
+		api.GET("/jobs/cities", h.ListJobCities)
 		api.POST("/jobs", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(20, time.Minute), h.CreateJob)
 		api.PUT("/jobs/:id", middleware.Auth(conn, cfg.JWTSecret), middleware.RateLimit(30, time.Minute), h.UpdateJob)
 		api.POST("/jobs/:id/flag", middleware.Auth(conn, cfg.JWTSecret), h.FlagJob)
@@ -148,6 +150,17 @@ func main() {
 
 	// 公开附件静态托管
 	r.StaticFS("/uploads", http.Dir(cfg.UploadDir))
+
+	// SEO：爬虫预渲染（爬虫拿到含正文的静态 HTML，普通访客仍走 SPA）+ 动态 sitemap
+	r.GET("/", h.Prerender)
+	r.GET("/ask", h.Prerender)
+	r.GET("/ask/:id", h.Prerender)
+	r.GET("/knowledge", h.Prerender)
+	r.GET("/knowledge/:id", h.Prerender)
+	r.GET("/forum", h.Prerender)
+	r.GET("/forum/:id", h.Prerender)
+	r.GET("/jobs", h.Prerender)
+	r.GET("/sitemap.xml", h.Sitemap)
 
 	// 前端静态托管：设置了 FRONTEND_DIST 时，由后端同时提供页面与 API（单端口部署）
 	if info, err := os.Stat(cfg.FrontendDist); err == nil && info.IsDir() {

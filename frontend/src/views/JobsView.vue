@@ -1,25 +1,36 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 import { useAuthStore } from '../stores/auth'
 import { timeAgo, formatDate } from '../utils/time'
+import Pagination from '../components/Pagination.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
+
+// 分页（服务端）：每页条数 + 分片渲染批大小（控制 DOM 规模，避免整页卡顿）
+const PAGE_SIZE = 50
+const CHUNK = 15
 
 const items = ref([])
 const loading = ref(false)
 const error = ref('')
 const saving = ref(false)
 
-// 筛选（服务端筛选）
+const page = ref(1)
+const total = ref(0)
+const stats = ref(null)
+const pinnedIds = ref([])
+const visibleCount = ref(CHUNK)
+const sentinel = ref(null)
+let observer = null
+
+// 筛选（全部由服务端执行）
 const statusFilter = ref('active') // active | invalid | duplicate | all
 const cityKeyword = ref('')
 const industryKeyword = ref('')
-// 校招状态筛选（客户端）：默认全部，只看已开启
 const campusFilter = ref('all') // all | 已开启
-// 我的投递状态筛选（客户端）：全部 | 已投递 | 未投递
 const appliedFilter = ref('all') // all | applied | not
 
 // 每张卡片的操作面板：panel.id + panel.mode(edit/flag/versions/reviews)
@@ -37,68 +48,46 @@ const appliedPending = ref({}) // id -> 请求中（防连点）
 const statusLabel = { active: '正常', invalid: '已失效', duplicate: '重复', all: '全部' }
 const statusClass = { active: 'badge-green', invalid: 'badge-gray', duplicate: 'badge-teal' }
 
-const cityOptions = computed(() => {
-  const set = new Set()
-  const norm = (t) => t.replace(/等$/, '').replace(/及全球基地$/, '')
-  for (const it of items.value) {
-    for (const t of String(it.city || '').split(/[、，,/+]/)) {
-      const k = norm(t.trim())
-      if (k) set.add(k)
-    }
+// 城市下拉：服务端 DISTINCT（分页后不能再从当前页数据里推）
+const cityOptions = ref([])
+async function loadCities() {
+  try {
+    const { data } = await api.jobCities()
+    cityOptions.value = data.items || []
+  } catch {
+    cityOptions.value = []
   }
-  return [...set].sort()
-})
+}
 
-const filteredItems = computed(() => {
-  let list = items.value
-  if (statusFilter.value !== 'all') list = list.filter((it) => it.status === statusFilter.value)
-  if (campusFilter.value !== 'all') list = list.filter((it) => it.campus_status === campusFilter.value)
-  if (appliedFilter.value === 'applied') list = list.filter((it) => it.my_applied)
-  else if (appliedFilter.value === 'not') list = list.filter((it) => !it.my_applied)
-  return list
-})
+// 分面计数来自服务端（各维度剔除自身条件），与分页无关
+const statusCounts = computed(() => stats.value?.status || { active: 0, invalid: 0, duplicate: 0, all: 0 })
+const campusCounts = computed(() => stats.value?.campus || { all: 0, open: 0 })
+const myCounts = computed(() => stats.value?.applied || { all: 0, applied: 0, not: 0 })
 
-const statusCounts = computed(() => {
-  const c = { active: 0, invalid: 0, duplicate: 0, all: items.value.length }
-  for (const it of items.value) c[it.status] = (c[it.status] || 0) + 1
-  return c
-})
-
-const campusCounts = computed(() => {
-  let open = 0
-  for (const it of items.value) if (it.campus_status === '已开启') open += 1
-  return { all: items.value.length, open }
-})
-
-const myCounts = computed(() => {
-  let applied = 0
-  for (const it of items.value) if (it.my_applied) applied += 1
-  return { all: items.value.length, applied, not: items.value.length - applied }
-})
+// 分片渲染：只挂载前 visibleCount 张卡片，滚动到底部再增量挂载
+const visibleItems = computed(() => items.value.slice(0, visibleCount.value))
 
 const linkList = (links) => String(links || '').split(/\n+/).map((s) => s.trim()).filter(Boolean)
-
-// 核验过期提示：核验时间超过 30 天提示可能过期
-function verifyHint(it) {
-  if (!it.verified_at) return null
-  const v = new Date(String(it.verified_at).replace(/-/g, '/'))
-  if (isNaN(v.getTime())) return null
-  const days = Math.floor((Date.now() - v.getTime()) / 86400000)
-  if (days > 30) return { cls: 'job-expired', text: `⚠ 已 ${days} 天未核验，可能过期` }
-  return { cls: 'job-fresh', text: `${days} 天前核验` }
-}
 
 async function load() {
   loading.value = true
   try {
     const { data } = await api.jobs({
+      page: page.value,
+      page_size: PAGE_SIZE,
       status: statusFilter.value,
+      campus_status: campusFilter.value === 'all' ? undefined : campusFilter.value,
+      applied: appliedFilter.value === 'all' ? undefined : appliedFilter.value,
       city: cityKeyword.value || undefined,
       industry: industryKeyword.value || undefined,
     })
-    items.value = data.items
+    items.value = data.items || []
+    total.value = data.total || 0
+    stats.value = data.stats || null
+    pinnedIds.value = data.pinned_ids || []
+    visibleCount.value = CHUNK
     const m = {}
-    for (const it of data.items) if (it.my_applied) m[it.id] = true
+    for (const it of items.value) if (it.my_applied) m[it.id] = true
     appliedMap.value = m
     error.value = ''
   } catch (e) {
@@ -108,9 +97,22 @@ async function load() {
   }
 }
 
-function applyFilter() {
+// 换筛选/翻页：重置面板与分片计数，回到列表顶部
+function reloadFromStart() {
   panel.value = { id: 0, mode: '' }
+  visibleCount.value = CHUNK
+  window.scrollTo({ top: 0 })
   load()
+}
+
+function applyFilter() {
+  page.value = 1
+  reloadFromStart()
+}
+
+function changePage(p) {
+  page.value = p
+  reloadFromStart()
 }
 
 function requireLogin() {
@@ -133,6 +135,12 @@ async function toggleApplied(it) {
   appliedPending.value = { ...appliedPending.value, [it.id]: true }
   try {
     await api.setJobApplied(it.id, { applied: target })
+    // 计数本地微调，避免每勾一次都整页刷新；处于「我的状态」筛选时需重查（该行可能离开当前条件）
+    if (stats.value?.applied) {
+      const s = stats.value.applied
+      stats.value = { ...stats.value, applied: { all: s.all, applied: s.applied + (target ? 1 : -1), not: s.not + (target ? -1 : 1) } }
+    }
+    if (appliedFilter.value !== 'all') await load()
   } catch (e) {
     error.value = e.message
     appliedMap.value = { ...appliedMap.value, [it.id]: !target }
@@ -253,11 +261,10 @@ async function movePin(it, dir) {
   }
 }
 
-// 后端返回顺序即展示序：置顶区首条不可再上移、末条不可再下移
-const pinnedItems = computed(() => items.value.filter((i) => i.is_pinned))
+// 后端返回的置顶行完整顺序（跨页）：首条不可上移、末条不可下移
 const isPinnedEdge = (it, dir) => {
-  if (!pinnedItems.value.length) return true
-  return dir === 'up' ? it.id === pinnedItems.value[0].id : it.id === pinnedItems.value[pinnedItems.value.length - 1].id
+  if (!pinnedIds.value.length) return true
+  return dir === 'up' ? it.id === pinnedIds.value[0] : it.id === pinnedIds.value[pinnedIds.value.length - 1]
 }
 
 // ---- 删除（管理员）----
@@ -350,7 +357,28 @@ async function removeReview(it, r) {
   }
 }
 
-onMounted(load)
+// 哨兵进入视口就再挂载一批卡片，直到本页全部渲染
+watch(sentinel, (el) => {
+  observer?.disconnect()
+  observer = null
+  if (!el) return
+  observer = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting) && visibleCount.value < items.value.length) {
+        visibleCount.value += CHUNK
+      }
+    },
+    { rootMargin: '400px' },
+  )
+  observer.observe(el)
+})
+
+onUnmounted(() => observer?.disconnect())
+
+onMounted(() => {
+  loadCities()
+  load()
+})
 </script>
 
 <template>
@@ -382,10 +410,10 @@ onMounted(load)
     <!-- 校招状态筛选 -->
     <div class="job-filters job-cs-filter">
       <span class="job-cs-label">校招状态</span>
-      <button class="filter-btn" :class="{ active: campusFilter === 'all' }" @click="campusFilter = 'all'">
+      <button class="filter-btn" :class="{ active: campusFilter === 'all' }" @click="campusFilter = 'all'; applyFilter()">
         全部 <b>{{ campusCounts.all }}</b>
       </button>
-      <button class="filter-btn" :class="{ active: campusFilter === '已开启' }" @click="campusFilter = '已开启'">
+      <button class="filter-btn" :class="{ active: campusFilter === '已开启' }" @click="campusFilter = '已开启'; applyFilter()">
         只看已开启 <b>{{ campusCounts.open }}</b>
       </button>
     </div>
@@ -393,13 +421,13 @@ onMounted(load)
     <!-- 我的投递状态筛选（登录后可见） -->
     <div v-if="auth.isLoggedIn" class="job-filters job-cs-filter">
       <span class="job-cs-label">我的状态</span>
-      <button class="filter-btn" :class="{ active: appliedFilter === 'all' }" @click="appliedFilter = 'all'">
+      <button class="filter-btn" :class="{ active: appliedFilter === 'all' }" @click="appliedFilter = 'all'; applyFilter()">
         全部 <b>{{ myCounts.all }}</b>
       </button>
-      <button class="filter-btn" :class="{ active: appliedFilter === 'applied' }" @click="appliedFilter = 'applied'">
+      <button class="filter-btn" :class="{ active: appliedFilter === 'applied' }" @click="appliedFilter = 'applied'; applyFilter()">
         已投递 <b>{{ myCounts.applied }}</b>
       </button>
-      <button class="filter-btn" :class="{ active: appliedFilter === 'not' }" @click="appliedFilter = 'not'">
+      <button class="filter-btn" :class="{ active: appliedFilter === 'not' }" @click="appliedFilter = 'not'; applyFilter()">
         未投递 <b>{{ myCounts.not }}</b>
       </button>
     </div>
@@ -428,7 +456,7 @@ onMounted(load)
       <button v-if="cityKeyword || industryKeyword" class="ghost-btn" @click="cityKeyword = ''; industryKeyword = ''; applyFilter()">
         清除
       </button>
-      <span class="job-count">共 {{ filteredItems.length }} 条</span>
+      <span class="job-count">共 {{ total }} 条</span>
     </div>
 
     <p v-if="error" class="notice" style="margin-top: 14px">{{ error }}</p>
@@ -457,12 +485,12 @@ onMounted(load)
     </div>
 
     <div v-if="loading" class="empty-note" style="margin-top: 20px">加载中…</div>
-    <div v-else-if="!filteredItems.length" class="empty-note" style="margin-top: 20px">
-      {{ items.length ? '当前筛选条件下没有记录，试试其他筛选' : '还没有记录，点击「+ 新增公司」添加招聘信息' }}
+    <div v-else-if="!items.length" class="empty-note" style="margin-top: 20px">
+      {{ total ? '当前筛选条件下没有记录，试试其他筛选' : '还没有记录，点击「+ 新增公司」添加招聘信息' }}
     </div>
 
     <div v-else class="job-cards">
-      <div v-for="it in filteredItems" :key="it.id" class="job-card" :class="{ 'job-card-dim': it.status !== 'active', 'job-card-pinned': it.is_pinned }">
+      <div v-for="it in visibleItems" :key="it.id" class="job-card" :class="{ 'job-card-dim': it.status !== 'active', 'job-card-pinned': it.is_pinned }">
         <!-- 头部：公司 + 徽章 -->
         <div class="job-card-head">
           <div class="job-card-title">
@@ -511,13 +539,8 @@ onMounted(load)
           </div>
         </div>
 
-        <!-- 底部：核验信息 + 操作 -->
+        <!-- 底部：操作 -->
         <div class="job-card-foot">
-          <div class="job-verify">
-            <span>最近验证：<b>{{ it.updater || it.author }}</b></span>
-            <span v-if="it.verified_at" class="job-dim">核验 {{ it.verified_at }}</span>
-            <span v-if="verifyHint(it)" :class="verifyHint(it).cls">{{ verifyHint(it).text }}</span>
-          </div>
           <div class="job-card-actions">
             <button class="filter-btn job-review-btn" @click="toggleReviews(it)">评价 <b>{{ it.review_count || 0 }}</b></button>
             <button class="filter-btn" @click="toggleVersions(it)">版本 {{ it.edit_count || 0 }}</button>
@@ -614,7 +637,9 @@ onMounted(load)
           </template>
         </div>
       </div>
+      <div v-if="visibleCount < items.length" ref="sentinel" class="job-more">加载更多…</div>
     </div>
+    <Pagination :page="page" :total="total" :page-size="PAGE_SIZE" @change="changePage" />
   </div>
 </template>
 
@@ -752,25 +777,17 @@ onMounted(load)
   display: flex;
   gap: 12px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   flex-wrap: wrap;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px dashed var(--line);
 }
-.job-verify {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
+.job-more {
+  text-align: center;
+  color: var(--muted);
   font-size: 13px;
-}
-.job-expired {
-  color: #c0392b;
-  font-weight: 600;
-}
-.job-fresh {
-  color: #2e8b57;
+  padding: 10px 0;
 }
 .job-card-meta {
   display: flex;

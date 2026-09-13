@@ -5,7 +5,9 @@ import { useAuthStore } from '../stores/auth'
 import api from '../api'
 import MarkdownContent from '../components/MarkdownContent.vue'
 import Editor from '../components/Editor.vue'
+import FileUpload from '../components/FileUpload.vue'
 import { timeAgo } from '../utils/time'
+import { setSeo } from '../utils/seo'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,10 +17,12 @@ const id = computed(() => Number(route.params.id))
 const post = ref(null)
 const myVote = ref(false)
 const replyBody = ref('')
+const replyFiles = ref([])
 const error = ref('')
 const loading = ref(true)
 const editingReply = ref(null)
 const editBody = ref('')
+const editFiles = ref([])
 const replyEditor = ref(null)
 
 function goReply() {
@@ -32,6 +36,7 @@ async function load() {
   try {
     const { data } = await api.forumPost(id.value)
     post.value = data
+    setSeo({ title: data.title, description: (data.body || '').replace(/[#*`>\s]+/g, ' ').trim().slice(0, 120), path: route.path, type: 'article' })
     api.viewForumPost(id.value).catch(() => {})
   } finally {
     loading.value = false
@@ -61,8 +66,9 @@ async function submitReply() {
   error.value = ''
   if (!replyBody.value.trim()) return (error.value = '回复内容不能为空')
   try {
-    await api.createForumReply(id.value, { body: replyBody.value })
+    await api.createForumReply(id.value, { body: replyBody.value, attachments: replyFiles.value })
     replyBody.value = ''
+    replyFiles.value = []
     load()
   } catch (e) {
     error.value = e.message
@@ -72,10 +78,11 @@ async function submitReply() {
 function startEditReply(r) {
   editingReply.value = r
   editBody.value = r.body
+  editFiles.value = r.attachments || []
 }
 async function saveEditReply() {
   try {
-    await api.updateForumReply(editingReply.value.id, { body: editBody.value })
+    await api.updateForumReply(editingReply.value.id, { body: editBody.value, attachments: editFiles.value })
     editingReply.value = null
     load()
   } catch (e) {
@@ -120,6 +127,7 @@ async function toggleSolved() {
       body: post.value.body,
       tags: post.value.tags || '',
       is_solved: !cur,
+      attachments: post.value.attachments || [],
     })
     post.value.is_solved = !cur
   } catch (e) {
@@ -151,6 +159,11 @@ onMounted(async () => {
         <span v-for="t in post.tags.split(',').filter(Boolean)" :key="t" class="tag">{{ t.trim() }}</span>
       </div>
       <MarkdownContent :source="post.body" />
+      <div v-if="post.attachments?.length" class="attachment-row">
+        <span class="attachment-label">附件：</span>
+        <a v-for="f in post.attachments" :key="f.url" class="attachment-chip" :href="f.url" target="_blank"
+          rel="noopener">📎 {{ f.name }}</a>
+      </div>
       <div class="meta" style="margin-top: 14px">
         <span style="margin-left: auto">
           <img v-if="post.author_avatar" :src="post.author_avatar" class="avatar" alt="" />
@@ -183,8 +196,14 @@ onMounted(async () => {
           <span style="margin-left: auto">{{ timeAgo(r.created_at) }}</span>
         </div>
         <MarkdownContent v-if="editingReply?.id !== r.id" :source="r.body" />
+        <div v-if="editingReply?.id !== r.id && r.attachments?.length" class="attachment-row">
+          <span class="attachment-label">附件：</span>
+          <a v-for="f in r.attachments" :key="f.url" class="attachment-chip" :href="f.url" target="_blank"
+            rel="noopener">📎 {{ f.name }}</a>
+        </div>
         <template v-else>
           <Editor v-model="editBody" :rows="4" :maxlength="12000" />
+          <FileUpload v-model="editFiles" />
           <div class="form-footer">
             <button class="ghost-btn" @click="editingReply = null">取消</button>
             <button class="primary-btn" @click="saveEditReply">保存</button>
@@ -203,6 +222,7 @@ onMounted(async () => {
       <div v-if="auth.isLoggedIn" id="reply-box" class="answer-box">
         <h3 style="font-size: 15px; margin-bottom: 10px">回复帖子</h3>
         <Editor ref="replyEditor" v-model="replyBody" :rows="4" :maxlength="12000" />
+        <FileUpload v-model="replyFiles" />
         <p class="form-hint">{{ error }}</p>
         <div class="form-footer">
           <button class="primary-btn" @click="submitReply">发表回复</button>

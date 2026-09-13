@@ -73,6 +73,7 @@ export default {
 
   // 就业共享表格（2027 届公司招聘信息，社区协作数据库）
   jobs: (params) => api.get('/jobs', { params }),
+  jobCities: () => api.get('/jobs/cities'),
   createJob: (d) => api.post('/jobs', d),
   updateJob: (id, d) => api.put(`/jobs/${id}`, d),
   flagJob: (id, d) => api.post(`/jobs/${id}/flag`, d),

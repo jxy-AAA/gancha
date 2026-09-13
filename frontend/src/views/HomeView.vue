@@ -22,7 +22,7 @@ onMounted(async () => {
     latestQuestions.value = q.data.items
     latestArticles.value = a.data.items
     latestPosts.value = p.data.items
-    latestJobs.value = j.data.items.slice(0, 4)
+    latestJobs.value = j.data.items
   } catch {
     /* 首页加载失败不阻塞展示 */
   }

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS questions (
   views INT UNSIGNED NOT NULL DEFAULT 0,
   status ENUM('open','solved','closed') NOT NULL DEFAULT 'open',
   accepted_answer_id BIGINT UNSIGNED NULL,
+  attachments TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   edited_at DATETIME NULL,
   KEY idx_questions_created (created_at),
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS answers (
   question_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
   body TEXT NOT NULL,
+  attachments TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   edited_at DATETIME NULL,
   KEY idx_answers_question (question_id)
@@ -85,6 +87,7 @@ CREATE TABLE IF NOT EXISTS forum_posts (
   is_pinned TINYINT(1) NOT NULL DEFAULT 0,
   is_solved TINYINT(1) NOT NULL DEFAULT 0,
   tags VARCHAR(250) NOT NULL DEFAULT '',
+  attachments TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   edited_at DATETIME NULL,
   KEY idx_forum_posts_created (created_at),
@@ -97,6 +100,7 @@ CREATE TABLE IF NOT EXISTS forum_replies (
   post_id BIGINT UNSIGNED NOT NULL,
   user_id BIGINT UNSIGNED NOT NULL,
   body TEXT NOT NULL,
+  attachments TEXT NOT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_forum_replies_post (post_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -14,6 +14,7 @@ type Config struct {
 	JWTSecret      string
 	UploadDir      string
 	FrontendDist   string
+	SiteURL        string
 	RegisterEnable bool
 }
 
@@ -25,6 +26,7 @@ func Load() (*Config, error) {
 		JWTSecret:      getenv("JWT_SECRET", ""),
 		UploadDir:      getenv("UPLOAD_DIR", "uploads"),
 		FrontendDist:   getenv("FRONTEND_DIST", ""),
+		SiteURL:        strings.TrimRight(getenv("SITE_URL", "https://opticatalk.sandog.icu"), "/"),
 		RegisterEnable: getenv("REGISTER_ENABLED", "true") != "false",
 	}
 	if cfg.JWTSecret == "" {

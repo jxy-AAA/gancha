@@ -5,8 +5,10 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"guangyanji/internal/middleware"
@@ -15,29 +17,80 @@ import (
 )
 
 // ListJobs 就业共享表格（2027 届公司招聘信息，社区协作数据库）。
-// 支持地点（city LIKE）、方向（industry LIKE）、状态筛选；置顶优先（按 pin_order 手动排序），
-// 其余按最近更新时间在前：有人编辑/恢复后该行自动上浮到非置顶区第一位。
+// 分页返回（默认 50/页），支持地点（city LIKE）、方向（industry LIKE）、状态、校招状态、
+// 我的投递筛选；置顶优先（按 pin_order 手动排序），其余按最近更新时间在前。
+// 另返回分面计数 stats（各维度剔除自身条件）与置顶行完整顺序 pinned_ids，供前端分页 UI 使用。
 func (s *Server) ListJobs(c *gin.Context) {
 	// 登录用户附带其“是否投递”状态；匿名（OptionalAuth 未命中）ID 为 0，EXISTS 恒为 false
 	u, _ := middleware.CurrentUser(c)
-	where := []string{"1=1"}
-	args := []interface{}{u.ID}
-	status := strings.TrimSpace(c.Query("status"))
-	if status == "" || status == "active" {
-		where = append(where, "j.status='active'")
-	} else if status != "all" {
-		where = append(where, "j.status=?")
-		args = append(args, status)
-	}
+	page, size := clampJobPage(c.Query("page"), c.Query("page_size"))
+
+	// 搜索类筛选（地点/方向）：所有分面计数都基于它们
+	base := []string{"1=1"}
+	baseArgs := []interface{}{}
 	if city := strings.TrimSpace(c.Query("city")); city != "" {
-		where = append(where, "j.city LIKE ?")
-		args = append(args, "%"+city+"%")
+		base = append(base, "j.city LIKE ?")
+		baseArgs = append(baseArgs, "%"+city+"%")
 	}
 	if industry := strings.TrimSpace(c.Query("industry")); industry != "" {
-		where = append(where, "(j.industry LIKE ? OR j.company LIKE ?)")
-		args = append(args, "%"+industry+"%", "%"+industry+"%")
+		base = append(base, "(j.industry LIKE ? OR j.company LIKE ?)")
+		baseArgs = append(baseArgs, "%"+industry+"%", "%"+industry+"%")
 	}
-	whereSQL := strings.Join(where, " AND ")
+
+	status, statusOn := strings.TrimSpace(c.Query("status")), true
+	if status == "all" {
+		statusOn = false
+	} else if status == "" {
+		status = "active"
+	}
+	campus := strings.TrimSpace(c.Query("campus_status"))
+	campusOn := campus != "" && campus != "all"
+	applied := strings.TrimSpace(c.Query("applied"))
+	appliedOn := u.ID > 0 && applied != "" && applied != "all"
+
+	// 按维度拼 WHERE：条件与占位符参数同步追加，避免与 SELECT 内参数错位
+	compose := func(parts ...string) (string, []interface{}) {
+		clauses := append([]string{}, base...)
+		args := append([]interface{}{}, baseArgs...)
+		for _, p := range parts {
+			switch p {
+			case "status":
+				if statusOn {
+					clauses = append(clauses, "j.status=?")
+					args = append(args, status)
+				}
+			case "campus":
+				if campusOn {
+					clauses = append(clauses, "j.campus_status=?")
+					args = append(args, campus)
+				}
+			case "applied":
+				if appliedOn {
+					op := "IN"
+					if applied == "not" {
+						op = "NOT IN"
+					}
+					clauses = append(clauses, "j.id "+op+" (SELECT job_id FROM job_applications WHERE user_id=?)")
+					args = append(args, u.ID)
+				}
+			}
+		}
+		return strings.Join(clauses, " AND "), args
+	}
+
+	whereSQL, whereArgs := compose("status", "campus", "applied")
+	var total int
+	if err := s.DB.QueryRow(`SELECT COUNT(*) FROM job_entries j WHERE `+whereSQL, whereArgs...).Scan(&total); err != nil {
+		log.Printf("ListJobs count err: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+
+	// SELECT 内的 EXISTS 参数在前，其后是 WHERE 参数与分页参数
+	qargs := make([]interface{}, 0, len(whereArgs)+3)
+	qargs = append(qargs, u.ID)
+	qargs = append(qargs, whereArgs...)
+	qargs = append(qargs, size, (page-1)*size)
 	rows, err := s.DB.Query(`SELECT j.id, j.user_id, j.company, j.industry,
 			j.city, j.apply_link, j.referral_code, j.verified_at, j.campus_status,
 			j.status, j.is_pinned, j.edit_reason,
@@ -50,14 +103,15 @@ func (s *Server) ListJobs(c *gin.Context) {
 		LEFT JOIN users u ON u.id=j.user_id
 		LEFT JOIN users le ON le.id=j.last_editor_id
 		WHERE `+whereSQL+`
-		ORDER BY j.is_pinned DESC, j.pin_order ASC, j.updated_at DESC, j.id DESC`, args...)
+		ORDER BY j.is_pinned DESC, j.pin_order ASC, j.updated_at DESC, j.id DESC
+		LIMIT ? OFFSET ?`, qargs...)
 	if err != nil {
 		log.Printf("ListJobs query err: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
 		return
 	}
 	defer rows.Close()
-	items := make([]gin.H, 0)
+	items := make([]gin.H, 0, size)
 	for rows.Next() {
 		var (
 			id, uid  int64
@@ -94,6 +148,132 @@ func (s *Server) ListJobs(c *gin.Context) {
 			})
 		}
 	}
+	// 分面计数：各维度剔除自身筛选条件，按钮上的数字才代表“切换过去会有多少条”
+	stats := gin.H{}
+	sw, swArgs := compose("campus", "applied")
+	var sActive, sInvalid, sDuplicate, sAll int
+	if err := s.DB.QueryRow(`SELECT COALESCE(SUM(j.status='active'),0), COALESCE(SUM(j.status='invalid'),0),
+			COALESCE(SUM(j.status='duplicate'),0), COUNT(*)
+		FROM job_entries j WHERE `+sw, swArgs...).Scan(&sActive, &sInvalid, &sDuplicate, &sAll); err != nil {
+		log.Printf("ListJobs status stats err: %v", err)
+	}
+	stats["status"] = gin.H{"active": sActive, "invalid": sInvalid, "duplicate": sDuplicate, "all": sAll}
+
+	cw, cwArgs := compose("status", "applied")
+	var cAll, cOpen int
+	if err := s.DB.QueryRow(`SELECT COUNT(*), COALESCE(SUM(j.campus_status='已开启'),0)
+		FROM job_entries j WHERE `+cw, cwArgs...).Scan(&cAll, &cOpen); err != nil {
+		log.Printf("ListJobs campus stats err: %v", err)
+	}
+	stats["campus"] = gin.H{"all": cAll, "open": cOpen}
+
+	if u.ID > 0 {
+		aw, awArgs := compose("status", "campus")
+		aArgs := make([]interface{}, 0, len(awArgs)+1)
+		aArgs = append(aArgs, u.ID)
+		aArgs = append(aArgs, awArgs...)
+		var apAll, apApplied int
+		if err := s.DB.QueryRow(`SELECT COUNT(*),
+				COALESCE(SUM(CASE WHEN EXISTS(SELECT 1 FROM job_applications a WHERE a.job_id=j.id AND a.user_id=?)
+					THEN 1 ELSE 0 END),0)
+			FROM job_entries j WHERE `+aw, aArgs...).Scan(&apAll, &apApplied); err != nil {
+			log.Printf("ListJobs applied stats err: %v", err)
+		}
+		stats["applied"] = gin.H{"all": apAll, "applied": apApplied, "not": apAll - apApplied}
+	} else {
+		stats["applied"] = nil
+	}
+
+	// 置顶行完整顺序：分页后前端仍能正确判断上移/下移边界
+	pw, pwArgs := compose("status", "campus", "applied")
+	prows, err := s.DB.Query(`SELECT j.id FROM job_entries j WHERE j.is_pinned=1 AND `+pw+`
+		ORDER BY j.pin_order ASC, j.updated_at DESC, j.id DESC`, pwArgs...)
+	if err != nil {
+		log.Printf("ListJobs pinned err: %v", err)
+	}
+	pinnedIDs := make([]int64, 0)
+	if prows != nil {
+		defer prows.Close()
+		for prows.Next() {
+			var pid int64
+			if prows.Scan(&pid) == nil {
+				pinnedIDs = append(pinnedIDs, pid)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"items": items, "total": total, "page": page, "page_size": size,
+		"stats": stats, "pinned_ids": pinnedIDs,
+	})
+}
+
+func clampJobPage(pageStr, sizeStr string) (int, int) {
+	page, _ := strconv.Atoi(pageStr)
+	size, _ := strconv.Atoi(sizeStr)
+	if page < 1 {
+		page = 1
+	}
+	if size < 1 {
+		size = 50
+	}
+	if size > 200 {
+		size = 200
+	}
+	return page, size
+}
+
+var (
+	jobCitiesMu      sync.Mutex
+	jobCitiesCache   []string
+	jobCitiesExpires time.Time
+)
+
+// ListJobCities 就业表中出现过的城市（服务端归一化去重，进程内缓存 10 分钟）。
+func (s *Server) ListJobCities(c *gin.Context) {
+	jobCitiesMu.Lock()
+	if jobCitiesCache != nil && time.Now().Before(jobCitiesExpires) {
+		items := jobCitiesCache
+		jobCitiesMu.Unlock()
+		c.JSON(http.StatusOK, gin.H{"items": items})
+		return
+	}
+	jobCitiesMu.Unlock()
+
+	rows, err := s.DB.Query(`SELECT DISTINCT city FROM job_entries WHERE city <> ''`)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "服务器错误"})
+		return
+	}
+	defer rows.Close()
+	set := map[string]bool{}
+	for rows.Next() {
+		var raw string
+		if rows.Scan(&raw) != nil {
+			continue
+		}
+		for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+			return r == '、' || r == '，' || r == ',' || r == '/' || r == '+'
+		}) {
+			// 与前端 cityOptions 的归一化保持一致
+			name := strings.TrimSpace(part)
+			name = strings.TrimSuffix(name, "等")
+			name = strings.TrimSuffix(name, "及全球基地")
+			if name != "" {
+				set[name] = true
+			}
+		}
+	}
+	items := make([]string, 0, len(set))
+	for name := range set {
+		items = append(items, name)
+	}
+	sort.Strings(items)
+
+	jobCitiesMu.Lock()
+	jobCitiesCache = items
+	jobCitiesExpires = time.Now().Add(10 * time.Minute)
+	jobCitiesMu.Unlock()
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 

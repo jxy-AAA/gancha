@@ -7,6 +7,7 @@ import MarkdownContent from '../components/MarkdownContent.vue'
 import Editor from '../components/Editor.vue'
 import FileUpload from '../components/FileUpload.vue'
 import { timeAgo } from '../utils/time'
+import { setSeo } from '../utils/seo'
 
 const route = useRoute()
 const router = useRouter()
@@ -26,6 +27,7 @@ const error = ref('')
 const loading = ref(true)
 const editingAnswer = ref(null)
 const editBody = ref('')
+const editFiles = ref([])
 const answerEditor = ref(null)
 
 function goWriteAnswer() {
@@ -45,6 +47,7 @@ async function load() {
     q.value = qd.data
     answers.value = ad.data.items
     comments.value = cd.data.items
+    setSeo({ title: q.value.title, description: (q.value.body || '').replace(/[#*`>\s]+/g, ' ').trim().slice(0, 120), path: route.path, type: 'article' })
     api.viewQuestion(qid.value).catch(() => {})
   } finally {
     loading.value = false
@@ -111,7 +114,7 @@ async function submitAnswer() {
   error.value = ''
   if (!answerBody.value.trim()) return (error.value = '回答内容不能为空')
   try {
-    await api.createAnswer(qid.value, { body: answerBody.value })
+    await api.createAnswer(qid.value, { body: answerBody.value, attachments: answerFiles.value })
     answerBody.value = ''
     answerFiles.value = []
     load()
@@ -132,10 +135,11 @@ async function acceptAnswer(id) {
 function startEditAnswer(a) {
   editingAnswer.value = a
   editBody.value = a.body
+  editFiles.value = a.attachments || []
 }
 async function saveEditAnswer() {
   try {
-    await api.updateAnswer(editingAnswer.value.id, { body: editBody.value })
+    await api.updateAnswer(editingAnswer.value.id, { body: editBody.value, attachments: editFiles.value })
     editingAnswer.value = null
     load()
   } catch (e) {
@@ -214,6 +218,11 @@ onMounted(() => {
       </span>
       <h2>{{ q.title }}</h2>
       <MarkdownContent :source="q.body" />
+      <div v-if="q.attachments?.length" class="attachment-row">
+        <span class="attachment-label">附件：</span>
+        <a v-for="f in q.attachments" :key="f.url" class="attachment-chip" :href="f.url" target="_blank"
+          rel="noopener">📎 {{ f.name }}</a>
+      </div>
       <div class="meta" style="margin-top: 14px">
         <span v-if="q.tags">
           <span v-for="t in q.tags.split(',').filter(Boolean)" :key="t" class="tag">{{ t.trim() }}</span>
@@ -249,8 +258,14 @@ onMounted(() => {
           <span style="margin-left: auto">{{ timeAgo(a.created_at) }}</span>
         </div>
         <MarkdownContent v-if="editingAnswer?.id !== a.id" :source="a.body" />
+        <div v-if="editingAnswer?.id !== a.id && a.attachments?.length" class="attachment-row">
+          <span class="attachment-label">附件：</span>
+          <a v-for="f in a.attachments" :key="f.url" class="attachment-chip" :href="f.url" target="_blank"
+            rel="noopener">📎 {{ f.name }}</a>
+        </div>
         <template v-else>
           <Editor v-model="editBody" :rows="5" :maxlength="12000" />
+          <FileUpload v-model="editFiles" />
           <div class="form-footer">
             <button class="ghost-btn" @click="editingAnswer = null">取消</button>
             <button class="primary-btn" @click="saveEditAnswer">保存</button>
