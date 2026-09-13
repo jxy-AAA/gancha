@@ -357,9 +357,11 @@ func (s *Server) prQuestion(id int64) (*prPage, error) {
 		Intro:       fmt.Sprintf("%s 提问于 %s · 浏览 %d · 回答见下方", author, created.Format("2006-01-02"), views),
 		Sections: []prSection{
 			{HTML: renderMarkdown(body)},
-			{Heading: "附件", Links: attachmentLinks(base, filesRaw)},
 		},
 		Type: "article",
+	}
+	if links := attachmentLinks(base, filesRaw); len(links) > 0 {
+		p.Sections = append(p.Sections, prSection{Heading: "附件", Links: links})
 	}
 
 	rows, err := s.DB.Query(`SELECT a.body, a.created_at, a.attachments, u.username
@@ -537,9 +539,11 @@ func (s *Server) prForumPost(id int64) (*prPage, error) {
 		Intro:       fmt.Sprintf("%s 发表于 %s · 浏览 %d", author, created.Format("2006-01-02"), views),
 		Sections: []prSection{
 			{HTML: renderMarkdown(body)},
-			{Heading: "附件", Links: attachmentLinks(base, filesRaw)},
 		},
 		Type: "article",
+	}
+	if links := attachmentLinks(base, filesRaw); len(links) > 0 {
+		p.Sections = append(p.Sections, prSection{Heading: "附件", Links: links})
 	}
 
 	rows, err := s.DB.Query(`SELECT r.body, r.created_at, r.attachments, u.username
